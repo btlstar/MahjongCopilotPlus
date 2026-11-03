@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """ Game automation classes and algorithm"""
 # Design: generate action steps based on mjai action (Automation)
 # action steps are individual steps like delay, mouse click, etc. (ActionStep and derivatives)
@@ -201,6 +202,7 @@ class AutomationTask:
         self.name = name
         self.desc = desc
         self.executor = br
+        self.geometry_revision = br.geometry_revision
         self._stop_event = threading.Event()        # set event to stop running
         self.last_exe_time:float = -1               # timestamp for the last actionstep execution
         
@@ -254,6 +256,10 @@ class AutomationTask:
             msg = f"Start executing task: {self.name}, {self.desc}"
             LOGGER.debug(msg)
             for step in action_steps:
+                if self.executor.geometry_revision != self.geometry_revision:
+                    LOGGER.debug('Cancel executing %s after browser resize', self.name)
+                    self.executor.mouse_up()
+                    return
                 if self._stop_event.is_set():
                     LOGGER.debug("Cancel executing %s. Stop event set",self.name)
                     return                

@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """Language string constants"""
 
 class LanStr:
@@ -5,9 +6,13 @@ class LanStr:
     LANGUAGE_NAME = 'English'
 
     # GUI
-    APP_TITLE = 'Mahjong Copilot'
+    APP_TITLE = 'MahjongCopilotPlus'
     START_BROWSER = "Start Web Client"
     WEB_OVERLAY = "Overlay"
+    GAME_STATUS_OVERLAY = "Game status badge"
+    FLOATING_PANEL = "Floating panel"
+    KEEP_ON_TOP = "Keep on top"
+    RESIZABLE_BROWSER = "Resize with window"
     AUTOPLAY = "Autoplay"
     AUTO_JOIN_GAME = "Auto Join"
     AUTO_JOIN_TIMER = "Auto Join Timer"
@@ -40,7 +45,7 @@ class LanStr:
     AUTO_LAUNCH_BROWSER = "Auto Launch Browser"
     MITM_PORT = "MITM Server Port"
     UPSTREAM_PROXY = "Upstream Proxy"
-    CLIENT_SIZE = "Client Size"
+    CLIENT_SIZE = "Initial Size"
     MAJSOUL_URL = "Majsoul URL"
     ENABLE_CHROME_EXT = "Enable Chrome Extensioins"
     LANGUAGE = "Display Language"
@@ -94,7 +99,7 @@ class LanStr:
     MAIN_THREAD_ERROR = "Main Thread Error!"
     MODEL_NOT_SUPPORT_MODE_ERROR = "Model not supporting game mode"
     CONNECTION_ERROR = "Network Connection Error"
-    BROWSER_ZOOM_OFF = r"Set Browser Zoom level to 100% !"
+    BROWSER_ZOOM_OFF = r"Display scaling may affect autoplay"
     CHECK_ZOOM = "Browser Zoom!"
     # Reaction/Actions
     PASS = "Skip"
@@ -139,7 +144,7 @@ class LanStrZHS(LanStr):
     LANGUAGE_NAME = '简体中文'
     
     # GUI
-    APP_TITLE = '麻将 Copilot'
+    APP_TITLE = 'MahjongCopilotPlus'
     START_BROWSER = "启动网页客户端"
     WEB_OVERLAY = "网页 HUD"
     AUTOPLAY = "自动打牌"
@@ -173,7 +178,11 @@ class LanStrZHS(LanStr):
     SETTINGS_TIPS = "MITM 代理相关设置项重启后生效"
     MITM_PORT = "MITM 服务端口"
     UPSTREAM_PROXY = "上游代理"
-    CLIENT_SIZE = "客户端大小"
+    CLIENT_SIZE = "初始窗口大小"
+    GAME_STATUS_OVERLAY = "游戏内状态角标"
+    FLOATING_PANEL = "悬浮提示窗"
+    KEEP_ON_TOP = "始终置顶"
+    RESIZABLE_BROWSER = "随窗口调整大小"
     MAJSOUL_URL = "雀魂网址"
     ENABLE_CHROME_EXT = "启用浏览器插件"
     LANGUAGE = "显示语言"
@@ -229,7 +238,7 @@ class LanStrZHS(LanStr):
     MAIN_THREAD_ERROR = "主进程发生错误!"
     MODEL_NOT_SUPPORT_MODE_ERROR = "模型不支持游戏模式"
     CONNECTION_ERROR = "网络连接错误"
-    BROWSER_ZOOM_OFF = r"请将浏览器缩放设置成 100% 以正常运行!"
+    BROWSER_ZOOM_OFF = r"显示缩放可能影响自动操作"
     CHECK_ZOOM = "浏览器缩放错误!"
     
     # Reaction/Actions

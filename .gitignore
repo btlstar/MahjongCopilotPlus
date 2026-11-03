@@ -1,29 +1,63 @@
+# Python / local environments
 __pycache__/
-dist/
-build/
-.env
+*.py[cod]
 .venv/
 venv/
+.env
+.env.*
 .vscode/
 .idea/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-*.log
-*.swp
-.DS_Store
-*.build
-*.dist
+# Build outputs and downloaded native dependencies
+/build/
+/dist/
+/_internal/
+/backups/
+*.exe
+*.dll
+*.pyd
+*.so
+*.dylib
+*.whl
+*.zip
+*.7z
+*.build/
+*.dist/
+/.MahjongCopilot*.update
 
-# Local folder/files
-browser_data/
-log/
-mitm_config/
-temp/
-/models/*
-test/
-/dev_docs
-/_*.py
-MahjongCopilot.spec
+# Personal settings, login profiles, certificates and logs
 /settings*.json
-libriichi3p/*.pyd
-libriichi3p/*.so
-chrome_ext/
+!/settings.example.json
+/mjmax/config/settings.yaml
+/mjmax/config/settings.mod.yaml
+/mjmax/config/*.pending
+*.pem
+*.key
+*.pfx
+*.p12
+/browser_data/
+/mitm_config/
+/log/
+/logs/
+/temp/
+/chrome_ext/
+/crx/*/
+*.log
+*.tmp
+
+# Model weights must be obtained separately
+/models/
+*.pth
+*.pt
+*.onnx
+
+# Editor and OS files
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini

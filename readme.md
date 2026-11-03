@@ -1,112 +1,151 @@
-# 麻将 Copilot / Mahjong Copilot
+# MahjongCopilotPlus
 
-麻将 AI 助手，基于 mjai (Mortal模型) 实现的机器人。会对游戏对局的每一步进行指导。现支持雀魂三人、四人麻将。
+**简洁的麻将 AI 桌面工具：实时建议、统一提示窗与可选装扮扩展。**
 
-加入QQ群：1031865144
-<br>
-Click to <a href="https://discord.gg/7hcZYTFw5r" target="_blank">Join Discord</a>
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D4)
+![License](https://img.shields.io/badge/License-GPLv3-blue)
+![Status](https://img.shields.io/badge/Status-Preview-orange)
 
-Mahjong AI Assistant for Majsoul, based on mjai (Mortal model) bot impelementaion. When you are in a Majsoul game, AI will give you step-by-step guidance. Now supports Majsoul 3-person and 4-person game modes.
+MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot) 的基础上持续开发，参考 [MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max) 的整合思路，接入 [MajsoulMax](https://github.com/Avenshy/MajsoulMax)，并重构桌面界面、设置和提示体验。
 
-下载、帮助和更多信息请访问网站 Please see website for download, help, and more information  
-<a href="https://mjcopilot.com/help" target="_blank">帮助信息 Help Info </a> | <a href="https://mjcopilot.com" target="_blank">https://mjcopilot.com</a>
+当前支持 **雀魂三麻／四麻**，具体可用模式取决于模型服务及本机原生库。天凤、一番街、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
+
+> 首个预览版为 `v0.1.0-preview.1`。Windows 用户请在 [Releases](https://github.com/btlstar/MahjongCopilotPlus/releases) 下载 `windows-x64.zip`，完整解压后运行 `MahjongCopilotPlus.exe`，无需安装 Python。模型与服务凭据需自行准备。三麻扩展和客户端注入组件未包含，见安装说明。源码用户安装依赖后可通过 `start.bat` 启动。Issues、PR 和未来版本均以[本仓库](https://github.com/btlstar/MahjongCopilotPlus)为准；上游的下载站和社群不是 Plus 的支持渠道。
+
+![主界面，使用离线示例数据](assets/screenshots/game.png)
+
+## 特性
+
+- **深色桌面界面**：Qt 紧凑顶栏，“对局／装扮／设置”三个主页面，设置、帮助、诊断和连接配置均在程序内显示。
+- **统一麻将牌样式**：万、筒、索分别用红、蓝、绿区分，赤五有额外标记；主界面与游戏内提示一致。
+- **简洁提示**：只保留游戏内卡片，可拖动并记住位置；顶栏与设置页开关即时同步，关闭后仍可在主界面查看建议。
+- **两键老板键**：默认推荐 `Alt+Q`，另有 `Alt+Z`、`Alt+X` 和自定义选项，隐藏／恢复程序及它启动的游戏浏览器。
+- **多种 AI 来源**：AkagiOT、MJAI、兼容的本地 Mortal 模型；根据来源显示对应设置，本地模型可浏览选择文件。
+- **可选装扮扩展**：MajsoulMax 集成、资源和协议更新，以及搭配参考；当前不提供从 GUI 批量应用或对局中即时换装。
+- **窗口适配**：游戏窗口可调整大小；手动操作模式不再因 Windows 显示缩放反复弹出 100% 缩放错误。
+- **自动操作保留**：自动打牌、自动加入和定时停止归入高级设置，默认关闭。
+
+<details>
+<summary>更多界面截图</summary>
+
+AI 连接设置：
+
+![AI 连接](assets/screenshots/ai.png)
+
+程序内连接配置：
+
+![连接与代理](assets/screenshots/proxy.png)
+
+装扮搭配参考：
+
+![装扮页](assets/screenshots/wardrobe.png)
+
+以上截图均使用离线示例数据，不代表连接到了实际账号。
+
+</details>
+
+## 快速开始
+
+### 运行环境
+
+- Windows x64，建议使用 **Python 3.11 x64**。当前桌面和老板键验证以 Windows 为主。
+- 可访问 Python 包源及 Playwright Chromium 下载源。
+- 至少一种可用 AI 来源；本仓库不附带 API Key、账户或模型权重。
+
+### Windows 便携版
+
+下载名含 `windows-x64.zip` 的发布附件，完整解压到可写目录，保留 `_internal` 及其他文件，运行 `MahjongCopilotPlus.exe`。GitHub 自动生成的 `Source code (zip)` 是源码，不是运行包。
+
+首次运行请在“设置 → AI 连接”配置服务或本地权重。本包包含四麻原生引擎及对应源码；三麻原生扩展、外部客户端注入组件、模型和账户均需自行准备。具体版本和验证边界见 [发布说明](docs/RELEASE_NOTES.md) 与 [依赖来源](docs/SOURCE_PROVENANCE.md)。
+
+### 源码安装与启动
+
+在 PowerShell 中执行：
+
+```powershell
+git clone https://github.com/btlstar/MahjongCopilotPlus.git
+cd MahjongCopilotPlus
+py -3.11 -m venv venv
+.\venv\Scripts\python.exe -m pip install --upgrade pip
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m playwright install chromium
+.\venv\Scripts\python.exe desktop_entry.py
+```
+
+完成安装后，可双击根目录 **`start.bat`**。它使用项目内的 `venv`，不是免安装启动器。
+
+首次启动会生成本地 `settings.json`。打开“设置 → AI 连接”，配置并测试模型来源，保存后等待 AI 加载，再点击“打开游戏”。程序会使用自己启动的浏览器进行连接和捕获。
+
+如果显示代理证书安装错误，按[安装与排错说明](docs/INSTALL.md)处理。不要将程序生成的证书私钥、浏览器资料或含凭据的设置文件提交到 GitHub。
+
+### AI 与原生库
+
+| 来源 | 需要准备 |
+| --- | --- |
+| AkagiOT | 服务地址与 API Key；项目不提供公共服务，也不承诺兼容所有同名服务版本 |
+| MJAI | 服务地址、已有账户的用户名和密钥，以及可用模型 |
+| 本地 Mortal | 与当前引擎兼容的权重；四麻与三麻分别选择文件 |
+
+四麻原生依赖通过 `requirements.txt` 中的 `riichi` 安装。**三麻还需要单独取得匹配 Python 版本、系统和架构的 `libriichi3p`**；它不随本源码仓库分发。具体文件名和注意事项见[安装说明](docs/INSTALL.md#三麻原生库)。模型权重和外部原生库始终遵循其原始分发条款。
+
+切换 AI 来源只切换配置表单，不代表已连接成功。保存后的新模型会在非对局状态加载；对局中更改会延后至当前对局结束。
+
+## 装扮扩展
+
+内置集成基于 MajsoulMax `v2026.07.07`，资源／协议快照为 MajsoulData `0.16.289-4.0.51`。准确版本、来源和校验值见 [data_version.json](mjmax/config/data_version.json)，更新方式见[集成说明](mjmax/INTEGRATION.md)。这不是“永久支持所有最新皮肤”的保证。
+
+装扮在游戏内选择，个人选择写入被 Git 忽略的本地配置。GUI 中的两套搭配为参考，不会自动替换你的装备。修改效果属于本地客户端显示，不会给账号增加服务器端拥有的物品。
+
+## 功能范围与使用提示
+
+| 平台 | 当前状态 |
+| --- | --- |
+| 雀魂 | 已接入；模型、原生库和游戏协议版本需匹配 |
+| 天凤、一番街 | 规划中 |
+| 天月麻将、掌心麻将 | 规划中 |
+
+这是学习、研究与个人实验项目。请遵守游戏平台规则，避免破坏公平对局；AI 实时辅助、自动操作或客户端修改可能导致账号处罚。项目不保证规避检测，不提供账号安全或胜率保证。
+
+程序按许可证规定以“现状”提供。游戏素材、商标、模型权重及第三方服务不因本项目开源而获得额外授权。
+
+## 文档与开发
+
+- [安装与排错](docs/INSTALL.md)
+- [资源下载与 TUN／直连排查](docs/NETWORK.md)
+- [桌面使用说明](DESKTOP.md)
+- [MajsoulMax 集成与数据更新](mjmax/INTEGRATION.md)
+- [贡献指南](CONTRIBUTING.md)
+- [更新记录](CHANGELOG.md)
+- [发布说明草稿与流程](docs/PUBLISHING.md)
+- [第三方来源与许可](THIRD_PARTY_NOTICES.md)
+
+离线检查：
+
+```powershell
+.\venv\Scripts\python.exe -m unittest discover -s tests -v
+.\venv\Scripts\python.exe tests/desktop_smoke.py
+.\venv\Scripts\python.exe tests/native_desktop_smoke.py
+.\venv\Scripts\python.exe scripts/check_publication.py
+```
+
+桌面检查会打开临时的离线测试窗口，不登录真实游戏。源码预览通过离线检查不代表所有游戏版本、服务接口或自动点击场景均经过实战验证。
+
+## 鸣谢
+
+- [latorc/MahjongCopilot](https://github.com/latorc/MahjongCopilot)：上游程序、AI 接口、捕获与自动操作基础。
+- [jiboyingg/MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max)：Copilot 与 MajsoulMax 的整合参考。
+- [Avenshy/MajsoulMax](https://github.com/Avenshy/MajsoulMax)、[MajsoulData](https://github.com/Avenshy/MajsoulData)：装扮模块、协议和资源快照。
+- [Equim-chan/Mortal](https://github.com/Equim-chan/Mortal)、[shinkuan/Akagi](https://github.com/shinkuan/Akagi)：模型结构、引擎与相关工作。
+- [MahjongRepository/mahjong_soul_api](https://github.com/MahjongRepository/mahjong_soul_api)、[747929791/majsoul_wrapper](https://github.com/747929791/majsoul_wrapper)、[MJAI](https://mjai.app/)：协议和实现参考。
+- [PragmaTwice/proxinject](https://github.com/PragmaTwice/proxinject)、Qt for Python、Playwright、mitmproxy 及其他依赖的贡献者。
+
+## 许可证
+
+项目沿用上游的 **GNU GPL v3**，原文见 [LICENSE](LICENSE)，原作者版权声明予以保留。Mortal 派生部分及外部原生库、Qt、代理组件等另有适用条款，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；主许可证不会替它们重新授权。
+
+本项目不附加“禁止商用”或“下载后 24 小时内删除”等限制。复制、修改、再分发时应遵守实际适用的许可证，并保留相应源码、署名和许可说明。
 
 ---
 
-![](assets/shot3_lower.png)
-
-特性：
-
-- 对局每一步 AI 指导，可在游戏中覆盖显示
-- 自动打牌，自动加入游戏
-- 多语言支持
-- 支持本地 Mortal 模型和在线模型，支持三麻和四麻
-
-Features:
-
-- Step-by-step AI guidance for the game, with optional in-game overlay.
-- Auto play & auto joining next game
-- Multi-language support
-- Supports Mortal local models and online models, 3p and 4p mahjong modes.
-
-<a id="instructions"></a>
-
-## 使用方法 / Instructions
-
-### 开发
-
-1. 克隆 repo
-2. 安装 Python 虚拟环境。Python 版本推荐 3.11.
-3. 安装 requirements.txt 中的依赖。
-4. 安装 Playwright + Chromium
-5. 主程序入口: main.py
-
-### To Develope
-
-1. Clone the repo
-2. Install Python virtual environment. Python version 3.11 recommended.
-3. Install dependencies from requirements.txt
-4. Install Playwright + Chromium
-5. Main entry: main.py
-
-### 示例脚本 Sample script：
-```batch
-git clone https://github.com/latorc/MahjongCopilot.git
-cd MahjongCopilot
-python -m venv venv
-CALL venv\Scripts\activate.bat
-pip install -r requirements.txt
-set PLAYWRIGHT_BROWSERS_PATH=0
-playwright install chromium
-python main.py
-```
-### 配置模型
-本程序支持几种模型来源。其中，本地模型（Local）是基于 Akagi 兼容的 Mortal 模型。要获取 Akagi 的模型，请参见 <a href="https://github.com/shinkuan/Akagi" target="_blank"> Akagi Github </a> 的说明。
-### Model Configuration
-This program supports different types of AI models. The 'Local' Model type uses Mortal models compatible with Akagi. To acquire Akagi's models, please refer to <a href="https://github.com/shinkuan/Akagi" target="_blank"> Akagi Github </a>.
-
-
-## 截图 / Screenshots
-
-界面 / GUI
-
-![](assets/shot1.png)
-![](assets/settings.png)
-
-游戏中覆盖显示 (HUD）/ In-game Overlay (HUD)
-
-![](assets/shot2.png)
-
-![](assets/shot3.png)
-
-## 设计 / Design
-
-![](assets/design_struct.png)
-
-  
-目录说明 Description for folders：
-* gui: tkinter GUI 相关类 / tkinter GUI related classes
-* game: 雀魂游戏相关类 / classes related to Majsoul game
-* bot: AI 模型和机器人实现 / implementations for AI models and bots 
-* common: 共同使用的支持代码 commonly used supporting code
-* libriichi & libriichi3p: 编译完成的 libriichi 库文件 / For compiled libriichi libraries
-
-## 鸣谢 / Credit
-
-- 基于 Mortal 模型和 MJAI 协议
-  Based on Mortal Model an MJAI protocol
-  
-  Mortal: https://github.com/Equim-chan/Mortal
-- 设计和功能实现基于 Akagi
-  Design and implementation based on Akagi
-  
-  Akagi: https://github.com/shinkuan/Akagi
-- 参考 Reference
-  Mahjong Soul API: https://github.com/MahjongRepository/mahjong_soul_api
-- MJAI协议参考 / MJAI Protocol Reference
-  
-  MJAI: https://mjai.app
-
-## 许可 / License
-本项目使用 GNU GPL v3 许可协议。  
-协议全文请见 [LICENSE](LICENSE)
+**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. The first Windows portable preview is v0.1.0-preview.1; extract the complete archive before running the exe. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. See the license and third-party notices before redistribution.

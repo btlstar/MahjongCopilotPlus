@@ -1,0 +1,19 @@
+name: 功能建议
+description: 提出使用场景与改进方向
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: 希望解决什么问题？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的行为或交互
+  - type: textarea
+    id: references
+    attributes:
+      label: 参考与补充
+      description: 请注明建议适用的平台；规划中的平台目前尚未接入。

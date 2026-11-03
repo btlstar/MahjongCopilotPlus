@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """ Game Broswer class for controlling maj-soul web client operations"""
 import logging
 import time
@@ -11,6 +12,8 @@ from playwright.sync_api import sync_playwright, BrowserContext, Page
 from common import utils
 from common.utils import Folder, FPSCounter, list_children
 from common.log_helper import LOGGER
+from .viewport import fit_game_rect
+from .guide_overlay import RENDER_GUIDE
 
 class GameBrowser:
     """ Wrapper for Playwright browser controlling maj-soul operations
@@ -20,6 +23,10 @@ class GameBrowser:
         """ Set browser with viewport size (width, height)"""
         self.width = width
         self.height = height
+        self.resizable = True
+        self.game_left = 0
+        self.game_top = 0
+        self.geometry_revision = 0
         self._action_queue = queue.Queue()       # thread safe queue for actions
         self._stop_event = threading.Event()    # set this event to stop processing actions
         self._browser_thread = None
@@ -39,13 +46,15 @@ class GameBrowser:
 
         # overlay info
         self._canvas_id = None              # for overlay
+        self._overlay_enabled = True
         self._last_botleft_text = None
         self._last_guide = None
 
     def __del__(self):
         self.stop()
 
-    def start(self, url:str, proxy:str=None, width:int=None, height:int=None, enable_chrome_ext:bool=False):
+    def start(self, url:str, proxy:str=None, width:int=None, height:int=None,
+              enable_chrome_ext:bool=False, resizable:bool=True):
         """ Launch the browser in a thread, and start processing action queue
         params:
             url(str): url of the page to open upon browser launch
@@ -61,6 +70,8 @@ class GameBrowser:
             self.width = width
         if height is not None:
             self.height = height
+        self.resizable = resizable
+        self.game_left = self.game_top = 0
         self._clear_action_queue()
         self._stop_event.clear()
         self._browser_thread = threading.Thread(
@@ -99,12 +110,14 @@ class GameBrowser:
                     self.context = chromium.launch_persistent_context(
                         user_data_dir=utils.sub_folder(Folder.BROWSER_DATA),
                         headless=False,
-                        viewport={'width': self.width, 'height': self.height},
+                        viewport=None if self.resizable else {'width': self.width, 'height': self.height},
+                        no_viewport=self.resizable,
                         proxy=proxy_object,
                         ignore_default_args=["--enable-automation"],
                         args=[
                             "--noerrdialogs",
                             "--no-sandbox",
+                            f"--window-size={int(self.width)},{int(self.height) + 88}",
                             disable_extensions_except_args,
                             load_extension_args
                         ]
@@ -119,10 +132,12 @@ class GameBrowser:
                     self.context = chromium.launch_persistent_context(
                         user_data_dir=utils.sub_folder(Folder.BROWSER_DATA),
                         headless=False,
-                        viewport={'width': self.width, 'height': self.height},
+                        viewport=None if self.resizable else {'width': self.width, 'height': self.height},
+                        no_viewport=self.resizable,
                         proxy=proxy_object,
                         ignore_default_args=["--enable-automation"],
-                        args=["--noerrdialogs", "--no-sandbox"]
+                        args=["--noerrdialogs", "--no-sandbox",
+                              f"--window-size={int(self.width)},{int(self.height) + 88}"]
                     )
                 except Exception as e:
                     LOGGER.error('Error launching the browser: %s', e, exc_info=True)
@@ -147,10 +162,12 @@ class GameBrowser:
             while self._stop_event.is_set() is False:
                 self.fps_counter.frame()
                 try:        # test if page is stil alive
-                    if time.time() - self._last_update_time > 1:
+                    if time.time() - self._last_update_time > 0.25:
                         self._page_title = self.page.title()
                         # check zoom level
                         self.zoomlevel_check = self.page.evaluate("() => window.devicePixelRatio")
+                        if self.resizable:
+                            self._sync_game_geometry()
                         self._last_update_time = time.time()
                 except Exception as e:
                     LOGGER.warning("Page error %s. exiting.", e)
@@ -180,6 +197,28 @@ class GameBrowser:
             self.init_vars()
         return
 
+    def _sync_game_geometry(self):
+        dimensions = self.page.evaluate("""() => {
+            const canvas = document.querySelector('#layaCanvas, #unity-canvas');
+            const box = canvas ? canvas.getBoundingClientRect() : null;
+            return {width: innerWidth, height: innerHeight,
+                canvas: box ? {x: box.x, y: box.y, width: box.width, height: box.height} : null};
+        }""")
+        rect = fit_game_rect(dimensions['width'], dimensions['height'], dimensions['canvas'])
+        previous = (self.game_left, self.game_top, self.width, self.height)
+        if all(abs(a - b) < 1 for a, b in zip(rect, previous)):
+            return
+        self.game_left, self.game_top, self.width, self.height = rect
+        self.geometry_revision += 1
+        if self.is_overlay_working():
+            guide, status = self._last_guide, self._last_botleft_text
+            self._action_stop_overlay()
+            self._action_start_overlay()
+            if guide:
+                self._action_overlay_update_guide(*guide)
+            if status:
+                self._action_overlay_update_botleft(status)
+
     def _clear_action_queue(self):
         """ Clear the action queue"""
         while True:
@@ -200,8 +239,12 @@ class GameBrowser:
         """ return True if browser thread is still running"""
         if self._browser_thread and self._browser_thread.is_alive():
             return True
-        else:
-            return False
+        return False
+
+    def bring_to_front(self):
+        """Keep all Playwright calls on the browser's own thread."""
+        if self.is_running():
+            self._action_queue.put(lambda:self.page.bring_to_front())
 
     def is_page_normal(self):
         """ return True if page is loaded """
@@ -262,23 +305,27 @@ class GameBrowser:
 
     def start_overlay(self):
         """ Queue action: Start showing the overlay"""
+        self._overlay_enabled = True
         self._last_botleft_text = None
         self._last_guide = None
         self._action_queue.put(self._action_start_overlay)
 
     def stop_overlay(self):
         """ Queue action: Stop showing the overlay"""
-        self._action_queue.put(self._action_stop_overlay)
+        was_enabled = self._overlay_enabled
+        self._overlay_enabled = False
+        if was_enabled or self.is_overlay_working():
+            self._action_queue.put(self._action_stop_overlay)
 
-    def overlay_update_guidance(self, guide_str:str, option_subtitle:str, options:list):
+    def overlay_update_guidance(self, guide_str:str, option_subtitle:str, options:list, rich_rows=None):
         """ Queue action: update text area
         params:
             guide_str(str): AI guide str (recommendation action)
             option_subtitle(str): subtitle for options (display before option list)
             options(list): list of (str, float), indicating action/tile with its probability """
-        if self._last_guide == (guide_str, option_subtitle, options):  # skip if same guide
+        if self._last_guide == (guide_str, option_subtitle, options, rich_rows):  # skip if same guide
             return
-        self._action_queue.put(lambda: self._action_overlay_update_guide(guide_str, option_subtitle, options))
+        self._action_queue.put(lambda: self._action_overlay_update_guide(guide_str, option_subtitle, options, rich_rows))
 
     def overlay_clear_guidance(self):
         """ Queue action: clear overlay text area"""
@@ -317,8 +364,10 @@ class GameBrowser:
 
     def _action_mouse_move(self, x:int, y:int, steps:int, finish_event:threading.Event):
         """ move mouse to (x,y) with steps, and set finish_event when done"""
-        self.page.mouse.move(x=x, y=y, steps=steps)
-        finish_event.set()
+        try:
+            self.page.mouse.move(x=x + self.game_left, y=y + self.game_top, steps=steps)
+        finally:
+            finish_event.set()
 
     def _action_mouse_click(self, delay:float, finish_event:threading.Event):
         """ mouse click on page at (x,y)"""
@@ -348,7 +397,8 @@ class GameBrowser:
 
     def _action_start_overlay(self):
         """ Display overlay on page. Will ignore if already exist, or page is None"""
-
+        if not self._overlay_enabled or self.page is None:
+            return
         if self.is_overlay_working():   # skip if overlay already working
             return
         self._canvas_id = utils.random_str(8) # random 8-byte alpha-numeric string
@@ -361,8 +411,8 @@ class GameBrowser:
             
             // Set styles to ensure the canvas is on top
             canvas.style.position = 'fixed'; // Use 'fixed' or 'absolute' positioning
-            canvas.style.left = '0'; // Position at the top-left corner of the viewport
-            canvas.style.top = '0';
+            canvas.style.left = '{self.game_left}px';
+            canvas.style.top = '{self.game_top}px';
             canvas.style.zIndex = '9999999'; // High z-index to ensure it is on top
             canvas.style.pointerEvents = 'none'; // Make the canvas click-through
             document.body.appendChild(canvas);            
@@ -379,96 +429,31 @@ class GameBrowser:
             if (canvas) {{
                 canvas.remove();
             }}
+            document.getElementById('{self._canvas_id}-guide')?.remove();
             }})()"""
         self.page.evaluate(js_code)
         self._canvas_id = None
-        self._botleft_text = None
+        self._last_botleft_text = None
         self._last_guide = None
 
-    def _overlay_text_params(self):
-        font_size = int(self.height/45)  # e.g., 22
-        line_space = int(self.height/45/2)
-        min_box_width = font_size * 15  # Minimum box width
-        initial_box_height = line_space * 2 + (font_size + line_space) * 6  # based on number of lines
-        box_top = int(self.height * 0.44)  # Distance from the top
-        box_left = int(self.width * 0.14)  # Distance from the left
-        return (font_size, line_space, min_box_width, initial_box_height, box_top, box_left)
-
-    def _action_overlay_update_guide(self, line1: str, option_title: str, options: list[tuple[str, float]]):
+    def _action_overlay_update_guide(self, line1: str, option_title: str, options: list[tuple[str, float]], rich_rows=None):
         if not self.is_overlay_working():
             return
-
-        font_size, line_space, min_box_width, initial_box_height, box_top, box_left = self._overlay_text_params()
-        if options:
-            options_data = [[text, f"{perc*100:4.0f}%"] for text, perc in options]
-        else:
-            options_data = []
-
-        js_code = f"""
-        (() => {{
-            const canvas = document.getElementById('{self._canvas_id}');
-            if (!canvas || !canvas.getContext) {{
-                return;
-            }}
-            const ctx = canvas.getContext('2d');
-
-            // Measure the first line of text to determine box width
-            ctx.font = "{font_size * 2}px Arial";
-            const firstLineMetrics = ctx.measureText("{line1}");
-            let box_width = Math.max(firstLineMetrics.width + {font_size}*2, {min_box_width}); // set minimal width
-            let box_height = {initial_box_height}; // Pre-defined box height based on number of lines
-            
-            // Clear the drawing area
-            ctx.clearRect({box_left}, {box_top}, {self.width}-{box_left}, {initial_box_height});            
-            // Draw the semi-transparent background box
-            ctx.clearRect({box_left}, {box_top}, box_width, box_height);
-            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-            ctx.fillRect({box_left}, {box_top}, box_width, box_height);
-
-            // Reset font to draw the first line
-            ctx.fillStyle = "#FFFFFF";
-            ctx.textBaseline = "top";
-            ctx.fillText("{line1}", {box_left} + {font_size}, {box_top} + {line_space} * 2);
-
-            // Adjust y-position for the subtitle and option lines
-            let yPos = {box_top} + {font_size * 2} + {line_space} * 4; // Position after the first line
-            ctx.font = "{font_size}px Arial"; // Font size for options subtitle and lines
-            
-            // Draw options subtitle
-            ctx.fillText("{option_title}", {box_left} + {font_size}*2, yPos);
-            yPos += {font_size} + {line_space}; // Adjust yPos for option lines
-
-            // Draw each option line
-            const options = {options_data};
-            options.forEach(option => {{
-                const [text, perc] = option;
-                ctx.fillText(text, {box_left} + {font_size}*2, yPos); // Draw option text
-                // Calculate right-aligned percentage position and draw
-                const percWidth = ctx.measureText(perc).width;
-                ctx.fillText(perc, {box_left} + {font_size}*11, yPos);
-                yPos += {font_size} + {line_space}; // Adjust yPos for the next line
-            }});
-        }})();"""
-        self.page.evaluate(js_code)
-        self._last_guide = (line1, option_title, options)
+        if rich_rows is None:
+            from common.presentation import advice_rows
+            from common.lan_str import LanStrZHS
+            rich_rows = advice_rows(line1,options or [],LanStrZHS())
+        self.page.evaluate(RENDER_GUIDE, {
+            'id': f'{self._canvas_id}-guide', 'line': line1, 'options': options or [],
+            'left': self.game_left, 'top': self.game_top, 'width': self.width, 'height': self.height,
+            'rows': rich_rows,
+        })
+        self._last_guide = (line1, option_title, options, rich_rows)
 
     def _action_overlay_clear_guide(self):
-        """ delete text and the background box"""
-        if self.is_overlay_working() is False:
+        if not self.is_overlay_working():
             return
-        font_size, line_space, min_box_width, initial_box_height, box_top, box_left = self._overlay_text_params()
-
-        js_code = f"""(() => {{
-            const canvas = document.getElementById('{self._canvas_id}');
-            if (!canvas || !canvas.getContext) {{
-                return;
-            }}
-            const ctx = canvas.getContext('2d');
-
-            // Clear the drawing area
-            ctx.clearRect({box_left}, {box_top}, {self.width}-{box_left}, {initial_box_height});
-        }});"""
-        self.page.evaluate(js_code)
+        self.page.evaluate('(id) => document.getElementById(id)?.remove()', f'{self._canvas_id}-guide')
         self._last_guide = None
 
     def _action_overlay_update_botleft(self, text:str=None):
@@ -499,15 +484,13 @@ class GameBrowser:
             const box_height = canvas.height * {box_height};
             ctx.clearRect(box_left, box_top, box_width, box_height);
             
-            // transparent box background
-            ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-            ctx.fillRect(box_left, box_top, box_width, box_height);            
-            
             // draw text
             const text = "{js_text}"
             if (!text) {{
                 return; // Skip drawing if text is empty
             }}
+            ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+            ctx.fillRect(box_left, box_top, box_width, box_height);
             
             ctx.fillStyle = "#FFFFFF";
             ctx.textBaseline = "top"
@@ -538,7 +521,8 @@ class GameBrowser:
             res_queue: queue for saving the image buff data"""
         if self.is_page_normal():
             try:
-                ss_bytes:BytesIO = self.page.screenshot(timeout=time_ms)
+                ss_bytes:BytesIO = self.page.screenshot(timeout=time_ms, clip={
+                    'x': self.game_left, 'y': self.game_top, 'width': self.width, 'height': self.height})
                 res_queue.put(ss_bytes)
             except Exception as e:
                 LOGGER.error("Error taking screenshot: %s", e, exc_info=True)

@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """ Bot for Akagi online-trained API"""
 import requests
 from common.log_helper import LOGGER
@@ -20,9 +21,12 @@ class BotAkagiOt(BotMjai):
             'Authorization': self.apikey,
         }
         r = requests.post(f"{self.url}/check", headers=headers, timeout=5)
+        r.raise_for_status()
         r_json = r.json()
         if r_json["result"] == "success":
             LOGGER.info("Akagi OT API check success")
+        else:
+            raise ValueError('AkagiOT authorization failed')
         
     @property
     def supported_modes(self) -> list[GameMode]:

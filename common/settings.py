@@ -1,6 +1,11 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """ Settings file and options """
 
 import json
+import os
+import tempfile
+import threading
+from pathlib import Path
 from typing import Callable
 from .log_helper import LOGGER
 from .lan_str import LanStr, LAN_OPTIONS
@@ -11,6 +16,7 @@ DEFAULT_SETTING_FILE = 'settings.json'
 class Settings:
     """ Settings class to load and save settings to json file"""
     def __init__(self, json_file:str=DEFAULT_SETTING_FILE) -> None:
+        self._save_lock = threading.RLock()
         self._json_file = json_file
         self._settings_dict:dict = self.load_json()        
         # read settings or set default values
@@ -30,6 +36,19 @@ class Settings:
         self.inject_process_name:str = self._get_value("inject_process_name", "jantama_mahjongsoul")
         self.language:str = self._get_value("language", list(LAN_OPTIONS.keys())[-1], self.valid_language)  # language code
         self.enable_overlay:bool = self._get_value("enable_overlay", True, self.valid_bool) # not shown
+        self.browser_resizable:bool = self._get_value("browser_resizable", True, self.valid_bool)
+        self.show_game_status_overlay:bool = self._get_value("show_game_status_overlay", False, self.valid_bool)
+        self.boss_key_enabled:bool = self._get_value('boss_key_enabled', True, self.valid_bool)
+        self.boss_key:str = self._get_value('boss_key', 'Alt+Q', lambda v: isinstance(v, str) and bool(v))
+        if self._settings_dict.get('desktop_ui_version',0) < 2 and self.boss_key == 'Ctrl+Alt+H':
+            self.boss_key = 'Alt+Q'
+        self.desktop_ui_version = 3
+        self.desktop_size = self._get_value('desktop_size',[760,520],lambda v:isinstance(v,list) and len(v)==2 and all(isinstance(n,int) for n in v) and 580<=v[0]<=4000 and 460<=v[1]<=2400)
+        # Replace the retired native floating window with the game overlay.
+        if self._settings_dict.get('show_floating_panel') is True:
+            self.enable_overlay = True
+        for key in ('show_floating_panel','floating_opacity','floating_topmost','floating_geometry'):
+            self._settings_dict.pop(key,None)
         
         # AI Model settings
         self.model_type:str = self._get_value("model_type", "Local")
@@ -71,6 +90,10 @@ class Settings:
         """ Load settings from json file into dict"""
         try:
             full  = utils.sub_file(".", self._json_file)
+            if self._json_file == DEFAULT_SETTING_FILE and not Path(full).exists():
+                example = Path(full).with_name('settings.example.json')
+                if example.exists():
+                    full = str(example)
             with open(full, 'r',encoding='utf-8') as file:
                 settings_dict:dict = json.load(file)
         except Exception as e:
@@ -82,10 +105,22 @@ class Settings:
     def save_json(self):
         """ Save settings into json file"""
         # save all non-private variables (not starting with "_") into dict
-        settings_to_save = {key: value for key, value in self.__dict__.items()
-                            if not key.startswith('_') and not callable(value)}
-        with open(self._json_file, 'w', encoding='utf-8') as file:
-            json.dump(settings_to_save, file, indent=4, separators=(', ', ': '))
+        with self._save_lock:
+            settings_to_save = dict(self._settings_dict)
+            settings_to_save.update({key:value for key,value in self.__dict__.items()
+                                    if not key.startswith('_') and not callable(value)})
+            path = Path(utils.sub_file('.',self._json_file))
+            pending = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=path.parent,
+                        prefix=path.name+'.',suffix='.tmp',delete=False) as file:
+                    pending = Path(file.name)
+                    json.dump(settings_to_save,file,indent=4,ensure_ascii=False)
+                os.replace(pending,path)
+                self._settings_dict = settings_to_save
+            finally:
+                if pending and pending.exists():
+                    pending.unlink()
     
     def _get_value(self, key:str, default_value:any, validator:Callable[[any],bool]=None) -> any:
         """ Get value from settings dictionary, or return default_value if error"""

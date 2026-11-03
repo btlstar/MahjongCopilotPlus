@@ -1,0 +1,9 @@
+Summary:
+发布 MahjongCopilotPlus v0.1.0-preview.1
+
+Description:
+整合 MajsoulMax 并更新资源与协议适配。
+重构深色 Qt 界面，统一麻将牌样式与游戏内提示开关。
+增加两键老板键，完善 AI 连接配置与窗口适配。
+优化 HTTP 资源流式转发，补充离线回归和打包验收。
+整理上游署名、第三方许可、安装文档和预览版发布文件。

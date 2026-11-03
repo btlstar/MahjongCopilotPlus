@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """ Common/utility methods
 no logging in this file because logging might not have been initialized yet
 """
@@ -100,11 +101,10 @@ def error_to_str(error:Exception, lan:LanStr) -> str:
 
 def sub_folder(folder_name:str) -> pathlib.Path:
     """ return the subfolder Path, create it if not exists"""
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = pathlib.Path(sys._MEIPASS).parent   # pylint: disable=W0212,E1101
-    except Exception:  #pylint: disable=broad-except
-        base_path = pathlib.Path('.')
+    if getattr(sys, 'frozen', False):
+        base_path = pathlib.Path(sys.executable).resolve().parent
+    else:
+        base_path = pathlib.Path(__file__).resolve().parent.parent
         
     subfolder = base_path / folder_name
     if not subfolder.exists():

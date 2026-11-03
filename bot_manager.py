@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """
 This file contains the BotManager class, which manages the bot logic, game state, and automation
 It also manages the browser and overlay display
@@ -18,6 +19,7 @@ from common.mj_helper import MjaiType, GameInfo, MJAI_TILE_2_UNICODE, ActionUnic
 from common.log_helper import LOGGER
 from common.settings import Settings
 from common.lan_str import LanStr
+from common.presentation import advice_rows
 from common import utils
 from common.utils import FPSCounter
 from bot import Bot, get_bot
@@ -43,6 +45,7 @@ class BotManager:
         self.browser = GameBrowser(self.st.browser_width, self.st.browser_height)
         self.automation = Automation(self.browser, self.st)
         self.bot:Bot = None
+        self.active_model_type = None
 
         self._thread:threading.Thread = None
         self._stop_event = threading.Event()
@@ -71,7 +74,11 @@ class BotManager:
     def stop(self, join_thread:bool):
         """ Stop bot manager thread"""
         self._stop_event.set()
-        if join_thread:
+        try:
+            self.automation.stop_previous()
+        except Exception:
+            LOGGER.exception('Error cancelling the last automatic action')
+        if join_thread and self._thread and self._thread.is_alive():
             self._thread.join()
             
         
@@ -126,16 +133,21 @@ class BotManager:
         """ Start the browser thread, open browser window """
         ms_url = self.st.ms_url
         proxy = self.mitm_server.proxy_str
-        self.browser.start(ms_url, proxy, self.st.browser_width, self.st.browser_height, self.st.enable_chrome_ext)
+        self.browser.start(ms_url, proxy, self.st.browser_width, self.st.browser_height,
+                           self.st.enable_chrome_ext, self.st.browser_resizable)
     
     def is_browser_zoom_off(self):
-        """ check browser zoom level, return true if zoomlevel is not 1"""
+        """Check display pixel ratio (includes OS scaling, not just page zoom)."""
         if self.browser and self.browser.is_page_normal():
             zoom = self.browser.zoomlevel_check
             if zoom is not None:
                 if abs(zoom - 1) > 0.001:
                     return True
         return False
+
+    def has_automation_scale_warning(self):
+        """Display scaling is relevant only to enabled automatic mouse actions."""
+        return (self.st.enable_automation or self.st.auto_join_game) and self.is_browser_zoom_off()
         
     # mitm restart not working for now. disable this.        
     # def set_mitm_proxinject_update(self):
@@ -183,10 +195,23 @@ class BotManager:
         
     
     def update_overlay(self):
-        """ update the overlay if conditions are met"""
-        if self._update_overlay_conditions_met():
+        """Apply the desired visibility even while the backend is busy."""
+        if self.sync_overlay_visibility():
             self._update_overlay_guide()
             self._update_overlay_botleft()
+
+    def sync_overlay_visibility(self):
+        """Keep start/stop in one place; AI rendering remains UI-driven."""
+        if self.browser is None:
+            return False
+        if not self.st.enable_overlay:
+            self.browser.stop_overlay()
+            return False
+        if self._update_overlay_conditions_met():
+            if not self.browser.is_overlay_working():
+                self.browser.start_overlay()
+            return True
+        return False
             
         
     def enable_automation(self):
@@ -221,15 +246,18 @@ class BotManager:
         
     def _create_bot(self):
         """ create Bot object based on settings"""
-        try:            
+        requested_type = self.st.model_type
+        try:
             self.is_loading_bot = True
             self.bot = None
             self.bot = get_bot(self.st)
+            self.active_model_type = requested_type
             self.game_exception = None
             LOGGER.info("Created bot: %s. Supported Modes: %s", self.bot.name, self.bot.supported_modes)
         except Exception as e:
             LOGGER.warning("Failed to create bot: %s", e, exc_info=True)
             self.bot = None
+            self.active_model_type = None
             self.game_exception = e
         self.is_loading_bot = False
         
@@ -272,27 +300,30 @@ class BotManager:
                     self.game_exception = e                    
                 self._loop_post_msg()
                                     
-            # loop ended, clean up before exit
-            LOGGER.info("Shutting down browser")
-            self.browser.stop(True)                
-            LOGGER.info("Shutting down MITM")
-            self.mitm_server.stop()
-            if self.proxy_injector.is_running():
-                LOGGER.info("Shutting down proxy injector")
-                self.proxy_injector.stop(True)
-            LOGGER.info("Bot manager thread ending.")         
-            
         except Exception as e:
             self.main_thread_exception = e
             LOGGER.error("Bot Manager Thread Exception: %s", e, exc_info=True)
+        finally:
+            # Clean up after both a normal close and a failed main loop.
+            for label, stop in (
+                ('automation', self.automation.stop_previous),
+                ('browser', lambda: self.browser.stop(True)),
+                ('MITM', self.mitm_server.stop),
+                ('proxy injector', lambda: self.proxy_injector.stop(True)),
+            ):
+                try:
+                    LOGGER.info('Shutting down %s', label)
+                    stop()
+                except Exception:
+                    LOGGER.exception('Error stopping %s', label)
             
     
     def _loop_pre_msg(self):
         """ things to do every loop before processing msg"""
         #  update bot if needed
         if self.bot_need_update and self.is_in_game() is False:
-            self._create_bot()
             self.bot_need_update = False
+            self._create_bot()
             
         # update mitm if needed: when no one is using mitm
         if self.mitm_proxinject_need_update:
@@ -313,17 +344,7 @@ class BotManager:
             if isinstance(self.game_exception, utils.MITMException):
                 self.game_exception = None
                 
-        # check overlay
-        if self.browser and self.browser.is_page_normal():
-            if self.st.enable_overlay:
-                if self.browser.is_overlay_working() is False:
-                    LOGGER.debug("Bot manager attempting turning on browser overlay")
-                    self.browser.start_overlay()
-                    # self._update_overlay_guide()
-            else:
-                if self.browser.is_overlay_working():
-                    LOGGER.debug("Bot manager turning off browser overlay")
-                    self.browser.stop_overlay()
+        self.sync_overlay_visibility()
         
         self.automation.automate_retry_pending(self.game_state)            # retry failed automation
         
@@ -444,13 +465,18 @@ class BotManager:
         reaction = self.get_pending_reaction()
         if reaction:
             guide, options = mjai_reaction_2_guide(reaction, 3, self.st.lan())
-            self.browser.overlay_update_guidance(guide, self.st.lan().OPTIONS_TITLE, options)
+            self.browser.overlay_update_guidance(guide, self.st.lan().OPTIONS_TITLE, options,
+                                                advice_rows(guide,options,self.st.lan()))
         else:
             self.browser.overlay_clear_guidance()
             
         
     def _update_overlay_botleft(self):
-        # update overlay bottom left text        
+        text = self.get_status_summary() if self.st.show_game_status_overlay else None
+        self.browser.overlay_update_botleft(text)
+
+    def get_status_summary(self):
+        """Status text shared by the optional game badge and desktop panel."""
         # maj copilot
         text = '😸' + self.st.lan().APP_TITLE
 
@@ -474,8 +500,8 @@ class BotManager:
             line = '❌' + self.st.lan().MAIN_THREAD_ERROR
         elif self.game_exception:
             line = '❌' + self.st.lan().GAME_ERROR
-        elif self.is_browser_zoom_off():
-            line = '❌' + self.st.lan().CHECK_ZOOM
+        elif self.has_automation_scale_warning():
+            line = '⚠️' + self.st.lan().BROWSER_ZOOM_OFF
         elif self.is_game_syncing():
             line = '⏳'+ self.st.lan().SYNCING
         elif self.is_bot_calculating():
@@ -486,7 +512,7 @@ class BotManager:
             line = '🟢' + self.st.lan().READY_FOR_GAME            
         
         text = '\n'.join((text, model_text, autoplay_text, line))       
-        self.browser.overlay_update_botleft(text)
+        return text
 
     
     def _do_automation(self, reaction:dict):

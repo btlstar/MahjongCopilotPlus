@@ -1,0 +1,7 @@
+# Copy to settings.yaml to override locally. This example contains no credentials.
+plugin_enable:
+  mod: true
+liqi:
+  auto_update: false
+  liqi_version: ''
+  github_token: ''

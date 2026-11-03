@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """ Mitm proxy server for intercepting data to/from the game server"""
 import threading
 import asyncio
@@ -11,6 +12,7 @@ from mitmproxy.tools.dump import DumpMaster
 import common.utils as utils
 from common.utils import Folder
 from common.log_helper import LOGGER
+from mjmax.addons import ModAddon
 
 class WsType:
     """ websocket msg type"""
@@ -74,6 +76,16 @@ class WSDataInterceptor:
 
     def replace_next_msg(self):
         pass
+
+    def responseheaders(self, flow: HTTPFlow):
+        """Forward HTTP bodies immediately, including small/chunked assets.
+
+        Copilot and MajsoulMax only rewrite WebSocket frames. No addon needs
+        ordinary HTTP bodies; keeping them buffered adds download latency.
+        Preserve HTTP Upgrade handling for game WebSockets.
+        """
+        if flow.response.status_code != 101:
+            flow.response.stream = True
     
     def request(self, flow: HTTPFlow):
         """ handler for request"""
@@ -172,9 +184,12 @@ class MitmController:
             with_termlog=False,
             with_dumper=False,
         )
+        # Fallback cutoff; responseheaders streams ordinary HTTP at every size.
+        self.dump_master.options.update(stream_large_bodies='256k')
         try:
             LOGGER.info("Starting mitm server%s, proxy=%s", up_log_str, self.proxy_str)
-            self.dump_master.addons.add(self.ws_data_addon)
+            # Copilot consumes original game frames before cosmetic rewriting.
+            self.dump_master.addons.add(self.ws_data_addon, ModAddon())
             await self.dump_master.run()
         except Exception as e:
             LOGGER.error("Exception in starting MITM server: %s", e, exc_info=True)
