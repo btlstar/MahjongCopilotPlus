@@ -18,7 +18,7 @@ def self_test():
     import torch
     import libriichi
     from unittest.mock import patch
-    from bot.akagiot.v3 import BotAkagiV3,DEFAULT_4P,DEFAULT_3P
+    from bot.akagiot.v3 import BotAkagiV3
     from common.utils import GameMode
     from common import utils
     from mjmax.proto import liqi_pb2
@@ -35,6 +35,7 @@ def self_test():
     from common.lan_str import LanStrZHS
     from common.settings import Settings
     import tempfile
+    MODEL_4P,MODEL_3P = '4p-offline-self-test','3p-offline-self-test'
     # Exercise the frozen adapter with a simulated service; never use saved keys.
     wire_calls = []
     def offline_request(method,url,**kwargs):
@@ -43,7 +44,7 @@ def self_test():
         if url.endswith('/v3/key'):
             payload = {'plan':'offline-self-test'}
         elif url.endswith('/v3/models'):
-            payload = {'models':[{'id':DEFAULT_4P,'game':'4p'},{'id':DEFAULT_3P,'game':'3p'}]}
+            payload = {'models':[{'id':MODEL_4P,'game':'4p'},{'id':MODEL_3P,'game':'3p'}]}
         else:
             assert method=='POST' and url.endswith('/v3/react')
             body = kwargs['json']
@@ -53,9 +54,9 @@ def self_test():
                        'candidates':[{'action':'dahai:1m','prob':.73}]}
         return SimpleNamespace(status_code=200,headers={},json=lambda:payload)
     with patch('bot.akagiot.v3.requests.Session.request',side_effect=offline_request):
-        bot = BotAkagiV3('https://offline.invalid','offline-self-test')
+        bot = BotAkagiV3('https://offline.invalid','offline-self-test',MODEL_4P,MODEL_3P)
         try:
-            for mode,model in ((GameMode.MJ4P,DEFAULT_4P),(GameMode.MJ3P,DEFAULT_3P)):
+            for mode,model in ((GameMode.MJ4P,MODEL_4P),(GameMode.MJ3P,MODEL_3P)):
                 bot.init_bot(1,mode)
                 bot.react({'type':'start_game','id':1})
                 bot.react({'type':'start_kyoku','bakaze':'E','dora_marker':'1s','kyoku':1,
@@ -81,11 +82,11 @@ def self_test():
         fields['akagi_ot_protocol'].setCurrentIndex(fields['akagi_ot_protocol'].findData('v3'))
         root.show_settings(1)
         app.processEvents()
-        assert fields['akagi_v3_model_4p'].currentText()==DEFAULT_4P
-        assert fields['akagi_v3_model_3p'].currentText()==DEFAULT_3P
+        assert fields['akagi_v3_model_4p'].currentText()==''
+        assert fields['akagi_v3_model_3p'].currentText()==''
         assert fields['akagi_v3_apikey'].text()==''
-        root.settings_page.refresh_model_status(SimpleNamespace(model_confirmed=True,last_served_model=DEFAULT_3P))
-        assert DEFAULT_3P in root.settings_page.ot_model_status.text()
+        root.settings_page.refresh_model_status(SimpleNamespace(model_confirmed=True,last_served_model=MODEL_3P))
+        assert MODEL_3P in root.settings_page.ot_model_status.text()
         root.poll.stop()
         root._shutdown_finished = True
         root.close()

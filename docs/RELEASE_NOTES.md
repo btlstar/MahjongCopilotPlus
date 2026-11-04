@@ -1,40 +1,46 @@
-# 后续发布方式：仅源码
+# MahjongCopilotPlus v0.1.0-preview.3
 
-从本次调整起，后续更新只发布源码，不再构建或上传 exe／Windows 便携包。使用者自行安装 Python、依赖和 Chromium，通过源码根目录 `start.bat` 启动。安装与迁移见 [INSTALL.md](INSTALL.md)、[UPGRADING.md](UPGRADING.md)。
+本次为源码预览版，重点修复 AI 连接反馈、游戏内提示框恢复和网络异常时的浏览器处理。
 
-固定使用同一个 Git 工作目录，历史 exe 不会随源码更新。每次版本更新均附 Summary 和 Description，发布流程见 [PUBLISHING.md](PUBLISHING.md)。本次仅调整分发与开发目录约定，没有新增游戏或 AI 行为。
+## AI 连接与模型选择
 
----
+- 修复 Akagi v3 的同源重定向，兼容 HTTP 307／308；不向跨源或降级地址自动转发密钥。
+- 兼容三麻 `kita` 拔北响应，保留座位、型号与返回结果校验，不静默切换模型。
+- API／账户密钥支持显示与隐藏，默认隐藏，离开设置或切换来源后恢复隐藏。
+- 获取模型列表、测试连接、保存加载分别显示对应结果，修复一直停在“正在加载 AI”的问题。
+- 已加载型号显示在底部状态栏；较窄窗口可悬停查看，详细推理回报与错误集中在“诊断”。
+- 新配置不再预选型号。获取模型后，在四麻／三麻下拉框中选择并保存；已有选择保留，留空的玩法不启用。
+- 旧版 OT 在服务端明确返回型号时记录；未回报时不猜测，连接测试成功不代表已经完成一次实际推理。
 
-以下为历史 preview.2 记录，不代表当前或后续版本仍提供便携包。
+## 游戏提示与浏览器
 
-# MahjongCopilotPlus v0.1.0-preview.2
+- 修复刷新、跳转和网络重试时程序误关浏览器的问题；打开失败或出现 502 时保留窗口，可在网络恢复后刷新重试。
+- 游戏内提示卡片在刷新、DOM 替换或卡片被移除后重新创建，保留拖动位置；仅保留一个游戏内提示框。
+- 优先复用启动时的空白标签页打开游戏，保留已有非空白页面。
+- 默认启用 Chromium 沙箱并精简启动信息条，统一普通／扩展模式启动流程。
+- 统一获取模型与连接测试的按钮样式，明确游戏内提示的开关状态。
 
-本次更新加入 Akagi v3 模型选择，保留原有深色 Qt 界面、雀魂对局提示及 MajsoulMax 集成。
+## 连接与诊断
 
-## 主要变化
+- Akagi v3 和旧版 OT 不再自动继承系统／环境 HTTP 代理；旧版推理复用直连会话。
+- 增加“使用上游代理”开关，关闭并保存可清空停用的旧代理地址。
+- 诊断显示游戏转发路径、HTTP 错误类别和 WebSocket 关闭元数据，新增记录不包含请求参数、代理凭据或牌局消息正文。
+- 应用层直连不能绕过系统 TUN。专属客户端需在自己的规则界面配置直连；Mihomo YAML 示例仅供对应内核使用。见[网络排查](https://github.com/btlstar/MahjongCopilotPlus/blob/v0.1.0-preview.3/docs/NETWORK.md)。
 
-- 在“设置 → AI 连接 → AkagiOT”选择“Akagi v3 · 可选模型”。
-- 四麻预设 `4p-akg-v8b-preview`，三麻预设 `3p-akg-v9`，可编辑 ID 或获取密钥获准使用的模型列表。
-- 推理请求明确发送模型 ID；指定模型不可用时报错，不自动改用其他模型。留空才使用服务端默认。
-- 连接检查与实际推理分开显示；服务端回报 `model` 后显示实际模型，回报不同 ID 则拒绝该建议。
-- 旧版 OT 地址与密钥独立保留，不跨服务自动复用。v3 密钥与旧版 OT 不保证通用。
-- Akagi v3 直接发送 MJAI 事件，三麻不需要本地 `libriichi3p`。
+## 安装与升级
 
-## 下载与升级
+**本版本只提供源码，不提供 exe 或 windows-x64.zip。** GitHub Release 自动生成的 `Source code (zip)`／`tar.gz` 即为源码下载，不是免安装运行包。
 
-下载 `MahjongCopilotPlus-0.1.0-preview.2-windows-x64.zip`，完整解压到新目录，运行 `MahjongCopilotPlus.exe`。保留 `_internal` 等配套文件，不要只复制 exe。无需安装 Python，Chromium 已包含。
+首次使用请按[安装说明](https://github.com/btlstar/MahjongCopilotPlus/blob/v0.1.0-preview.3/docs/INSTALL.md)准备 Python 3.11 x64、依赖和 Chromium，然后运行根目录 `start.bat`。已有源码用户关闭程序及游戏浏览器后 Pull 更新，再用 BAT 启动；本版本没有新增运行依赖。
 
-先关闭旧版和游戏浏览器，再按 [升级说明](UPGRADING.md) 保留配置。不要将新版示例配置覆盖旧版私人配置。旧配置仍使用原来的 OT 接口，需要手动切换到 v3、填写对应密钥并保存。
+从旧 exe 迁移请参阅[升级说明](https://github.com/btlstar/MahjongCopilotPlus/blob/v0.1.0-preview.3/docs/UPGRADING.md)。个人 `settings.json`、装扮配置、浏览器资料、证书、模型与本地环境不进入源码发布；不要用示例配置覆盖自己的设置。保留原有 AI 选择，需要更新型号时手动获取并保存。
 
-本包不包含模型权重、API 账户、本地三麻扩展或外部客户端注入组件；自动操作默认关闭。本地模型及旧版 OT 的三麻仍需额外扩展。
+## 验证与范围
 
-## 验证范围
+- 87 项自动化回归通过，覆盖协议、模型校验、直连请求、浏览器恢复与提示层行为。
+- 真实 Chromium／Qt 桌面检查通过，包括沙箱启动参数、刷新与 502 恢复、提示卡片重建及设置交互。
+- 发布文件、文档本地链接及个人配置隔离检查通过。
 
-52 项源码自动化测试覆盖真实本机 HTTP 协议、两种模型参数、雀魂消息到 AI 建议的离线流程、立直后续出牌、配置保留和其他既有功能。另执行 Qt／Chromium 交互、原生引擎检查、冻结 exe 自检及中文空格路径解压启动；具体结果见附件 `VALIDATION.json`。
+本次发布整理未向真实 AI 服务发送请求。此前独立虚构事件的线上三麻拔北与后续摸牌检查已通过，未上传私人日志或重放真实牌局；这些检查不能代替长期对局稳定性验证，也不能保证 Chromium 或网络永不异常。其他平台接入与 GUI 批量换装仍未实现。
 
-打包自检使用模拟服务，没有使用真实服务密钥或账号验证线上推理。实际可用模型由服务端与套餐决定，预设 ID 不代表永久最新或最强。
-
-## 源码与许可
-
-应用源码归档、原生引擎对应源码、许可与 `SHA256SUMS.txt` 一并提供；便携包包含依赖声明与许可证。详见 `THIRD_PARTY_NOTICES.md` 和 `SOURCE_PROVENANCE.md`。
+完整变更见[更新记录](https://github.com/btlstar/MahjongCopilotPlus/blob/v0.1.0-preview.3/CHANGELOG.md)，提交文案见[COMMIT_MESSAGE.txt](https://github.com/btlstar/MahjongCopilotPlus/blob/v0.1.0-preview.3/docs/COMMIT_MESSAGE.txt)。保留原有版权、GPL 许可及第三方声明。

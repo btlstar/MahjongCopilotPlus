@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PIL import Image
@@ -15,6 +16,29 @@ from game.browser import GameBrowser
 
 def check_browser():
     with sync_playwright() as p:
+        with tempfile.TemporaryDirectory() as profile:
+            browser = GameBrowser(1280,720)
+            with patch('game.browser.utils.sub_folder',return_value=Path(profile)):
+                launch = browser._launch_options(None)
+            # chrome://version is unavailable in this bundled headless shell.
+            # Use a minimized disposable window to inspect the real UI build.
+            launch['args'].append('--start-minimized')
+            startup = p.chromium.launch_persistent_context(**launch)
+            try:
+                startup.pages[0].goto('chrome://version/')
+                command_line = startup.pages[0].locator('#command_line').inner_text()
+                assert '--no-sandbox' not in command_line
+                assert '--test-type=webdriver' in command_line
+                assert '--enable-automation' not in command_line
+                startup.pages[0].goto('about:blank')
+                startup.route('https://copilot-startup.test/**',lambda route:route.fulfill(
+                    content_type='text/html',body='<title>Startup fixture</title>'))
+                browser.context = startup
+                browser._open_initial_page('https://copilot-startup.test/')
+                assert len(startup.pages)==1
+                assert browser.page.title()=='Startup fixture'
+            finally:
+                startup.close()
         chrome = p.chromium.launch(headless=True)
         context = chrome.new_context(viewport={'width': 1280, 'height': 720})
         # Give localStorage a real origin without contacting the network.
@@ -24,9 +48,9 @@ def check_browser():
         page = context.new_page()
         page.goto('https://copilot.test/')
         browser = GameBrowser(1280, 720)
-        browser.page = page
-        browser._page_title = 'offline check'
-        browser._sync_game_geometry()
+        browser.page,browser.context = page,context
+        browser._bind_page_events()
+        browser._poll_page()
         browser._action_start_overlay()
         browser._action_overlay_update_botleft(None)
         def alpha(x, y):
@@ -106,6 +130,7 @@ def check_browser():
         assert box['y'] + box['height'] <= browser.game_top + browser.height
         browser._action_stop_overlay()
         page.reload()
+        browser._poll_page()
         browser._action_start_overlay()
         browser._action_overlay_update_guide('切🀏九萬', '',
             [('🀏九萬', 0.24), ('🀁南', 0.19), ('🀡九筒', 0.09)])
@@ -165,6 +190,42 @@ def check_browser():
         manager.st.enable_overlay = False
         manager.update_overlay()
         drain()
+        # Reload destroys DOM nodes, even if dimensions/advice do not change.
+        manager.st.enable_overlay = True
+        manager.update_overlay()
+        drain()
+        old_id = browser._canvas_id
+        page.reload(wait_until='domcontentloaded')
+        browser._poll_page()
+        assert not browser.is_overlay_working()
+        manager.update_overlay()
+        drain()
+        assert browser._canvas_id!=old_id and page.locator('[data-guide-row]').count()==3
+        # Also recover if the game replaces DOM without a full navigation.
+        page.evaluate('(id) => document.getElementById(id).remove()',browser._canvas_id)
+        browser._poll_page()
+        manager.update_overlay()
+        drain()
+        assert page.locator('[data-guide-drag]').count()==1
+        assert page.locator('[data-guide-row]').count()==3
+        page.evaluate('(id) => document.getElementById(id+"-guide").remove()',browser._canvas_id)
+        browser._poll_page()
+        manager.update_overlay()
+        drain()
+        assert page.locator('[data-guide-drag]').count()==1
+        assert page.locator('[data-guide-row]').count()==3
+        page.route('https://copilot.test/failure',lambda route:route.fulfill(
+            status=502,content_type='text/html',body='<title>502 Bad Gateway</title>Retry fixture'))
+        page.goto('https://copilot.test/failure',wait_until='domcontentloaded')
+        assert browser._browser_step() and not page.is_closed()
+        assert '502' in browser.last_page_error and not browser.is_page_normal()
+        page.unroute('https://copilot.test/failure')
+        page.reload(wait_until='domcontentloaded')
+        browser._poll_page()
+        assert browser.is_page_normal() and browser.last_page_error is None
+        manager.update_overlay()
+        drain()
+        assert page.locator('[data-guide-row]').count()==3
         chrome.close()
 
 
@@ -176,6 +237,7 @@ def check_gui():
 if __name__ == '__main__':
     check_browser()
     check_gui()
-    print(json.dumps({'ok': True, 'checks': ['Chromium resizing', 'letterbox coordinates',
+    print(json.dumps({'ok': True, 'checks': ['sandbox enabled and quiet startup arguments', 'Chromium resizing', 'letterbox coordinates',
         'overlay clear/hide', 'drag during AI update', 'compact card without grip',
-        'position persistence/reload/reset', 'cropped screenshots', 'GUI widgets', 'single game-overlay toggle', 'settings dialog']}))
+        'position persistence/reload/reset', 'overlay restored after reload and DOM replacement',
+        '502 refresh recovery without closing browser', 'cropped screenshots', 'GUI widgets', 'single game-overlay toggle', 'settings dialog']}))

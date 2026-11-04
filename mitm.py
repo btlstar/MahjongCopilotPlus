@@ -4,6 +4,8 @@ import threading
 import asyncio
 import queue
 import json
+import re
+import time
 from dataclasses import dataclass
 from urllib.parse import urlparse, parse_qs
 from mitmproxy.http import HTTPFlow
@@ -13,6 +15,39 @@ import common.utils as utils
 from common.utils import Folder
 from common.log_helper import LOGGER
 from mjmax.addons import ModAddon
+
+
+def proxy_endpoint(value):
+    """Describe routing without exposing proxy credentials or URL parameters."""
+    parsed = urlparse(value)
+    host = parsed.hostname or '地址无效'
+    if ':' in host:
+        host = '['+host+']'
+    try:
+        port = ':'+str(parsed.port) if parsed.port else ''
+    except ValueError:
+        return '代理地址无效'
+    return (parsed.scheme+'://' if parsed.scheme else '')+host+port
+
+
+def network_error_summary(message):
+    """Keep diagnostic categories, not request URLs, headers or payloads."""
+    text = str(message).lower()
+    code = re.search(r'winerror\s+(\d+)',text)
+    number = code.group(1) if code else ''
+    if number in ('1225','10061') or 'refused' in text:
+        detail = '连接被拒绝'
+    elif number=='10054' or 'reset' in text:
+        detail = '连接被重置'
+    elif number=='10060' or 'timeout' in text or 'timed out' in text:
+        detail = '连接超时'
+    elif number=='11001' or any(word in text for word in ('name resolution','getaddrinfo','dns')):
+        detail = '域名解析失败'
+    elif any(word in text for word in ('certificate','tls','ssl')):
+        detail = 'TLS／证书连接失败'
+    else:
+        detail = '连接失败'
+    return detail+(f'（WinError {number}）' if number else '')
 
 class WsType:
     """ websocket msg type"""
@@ -40,6 +75,9 @@ class WSDataInterceptor:
         else:
             self.allowed_domains = None
         self.message_queue = queue.Queue()      
+        self.last_network_error = ''
+        self.last_disconnect = ''
+        self._error_logged_at = {}
         """Queue for unretrieved messages
         each element is: WSMessage"""
         
@@ -72,7 +110,29 @@ class WSDataInterceptor:
     def websocket_end(self, flow:HTTPFlow):
         """ ws flow end handler"""
         if self.allow_url(flow.request.pretty_url):
-            self.message_queue.put(WSMessage(flow.id, flow.timestamp_start, None, WsType.END))        
+            self.message_queue.put(WSMessage(flow.id, flow.timestamp_start, None, WsType.END))
+            host = urlparse(flow.request.pretty_url).hostname or '未知主机'
+            ws = flow.websocket
+            code = getattr(ws,'close_code',None)
+            client = getattr(ws,'closed_by_client',None)
+            actor = '客户端关闭' if client is True else '服务端关闭' if client is False else '关闭方未知'
+            ended = getattr(ws,'timestamp_end',None) or time.time()
+            duration = max(0,ended-(flow.timestamp_start or ended))
+            self.last_disconnect = f'{time.strftime("%H:%M:%S")} · {host} · {actor} · code={code} · 已连接 {duration:.0f} 秒'
+            LOGGER.info('WebSocket closed: %s',self.last_disconnect)
+
+    def error(self,flow:HTTPFlow):
+        """Retain enough failure context to investigate intermittent outages."""
+        if not flow.error:
+            return
+        host = urlparse(flow.request.pretty_url).hostname or '未知主机'
+        detail = network_error_summary(flow.error.msg)
+        now = time.monotonic()
+        self.last_network_error = f'{time.strftime("%H:%M:%S")} · {host} · {detail}'
+        key = (host,detail)
+        if now-self._error_logged_at.get(key,float('-inf'))>=5:
+            LOGGER.warning('Proxy forwarding failed: %s',self.last_network_error)
+            self._error_logged_at[key] = now
 
     def replace_next_msg(self):
         pass
@@ -136,6 +196,9 @@ class MitmController:
         self.proxy_port = port
         self.upstream_proxy = upstream_proxy
         self.mode = mode
+        self.ws_data_addon.last_network_error = ''
+        self.ws_data_addon.last_disconnect = ''
+        self.ws_data_addon._error_logged_at.clear()
         # Start thread
         self.mitm_thread = threading.Thread(
             name="MitmThread",
@@ -162,7 +225,7 @@ class MitmController:
                     confdir=str(self.mitm_config_folder),
                     mode=[f"upstream:{self.upstream_proxy}"],
                 )
-                up_log_str = f" (upstream_proxy={self.upstream_proxy})"
+                up_log_str = f" (upstream_proxy={proxy_endpoint(self.upstream_proxy)})"
             else:
                 opts = options.Options(
                     listen_port=self.proxy_port,

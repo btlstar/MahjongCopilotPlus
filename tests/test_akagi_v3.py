@@ -9,12 +9,14 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from bot.akagiot.v3 import AkagiV3Client,BotAkagiV3,DEFAULT_4P,DEFAULT_3P,DEFAULT_URL
+from bot.akagiot.v3 import AkagiV3Client,BotAkagiV3,DEFAULT_URL
 from common.settings import Settings
 from common.log_helper import LOGGER
 from common.utils import GameMode
 
-CATALOG = [{'id':DEFAULT_4P,'game':'4p'},{'id':DEFAULT_3P,'game':'3p'}]
+MODEL_4P = '4p-fixture-selected'
+MODEL_3P = '3p-fixture-selected'
+CATALOG = [{'id':MODEL_4P,'game':'4p'},{'id':MODEL_3P,'game':'3p'}]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -36,7 +38,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.server.replies:
             body = self.server.replies.pop(0)
         else:
-            body = {'model':body.get('model',DEFAULT_4P),
+            body = {'model':body.get('model',MODEL_4P),
                     'reaction':{'type':'dahai','actor':body['player_id'],'pai':'1m','tsumogiri':False},
                     'candidates':[{'action':'dahai:1m','prob':.73},{'action':'reach','prob':.21}]}
         self.reply(body)
@@ -55,7 +57,7 @@ class AkagiV3Tests(unittest.TestCase):
         self.addCleanup(self.server.shutdown)
         self.url = f'http://127.0.0.1:{self.server.server_port}'
 
-    def bot(self,mode=GameMode.MJ4P,seat=0,model4=DEFAULT_4P,model3=DEFAULT_3P):
+    def bot(self,mode=GameMode.MJ4P,seat=0,model4=MODEL_4P,model3=MODEL_3P):
         bot = BotAkagiV3(self.url,'offline-key',model4,model3)
         self.addCleanup(bot.client.session.close)
         bot.init_bot(seat,mode)
@@ -73,7 +75,7 @@ class AkagiV3Tests(unittest.TestCase):
         return [entry for entry in self.server.calls if entry[0]=='POST']
 
     def test_each_mode_sends_requested_model_and_bearer_auth(self):
-        for mode,model in ((GameMode.MJ4P,DEFAULT_4P),(GameMode.MJ3P,DEFAULT_3P)):
+        for mode,model in ((GameMode.MJ4P,MODEL_4P),(GameMode.MJ3P,MODEL_3P)):
             with self.subTest(mode=mode):
                 bot = self.bot(mode,seat=1)
                 reaction = bot.react({'type':'tsumo','actor':1,'pai':'2m'})
@@ -110,8 +112,8 @@ class AkagiV3Tests(unittest.TestCase):
     def test_reach_gets_followup_without_duplicate_real_reach(self):
         bot = self.bot()
         self.server.replies = [
-            {'model':DEFAULT_4P,'reaction':{'type':'reach','actor':0}},
-            {'model':DEFAULT_4P,'reaction':{'type':'dahai','actor':0,'pai':'2m','tsumogiri':True}}]
+            {'model':MODEL_4P,'reaction':{'type':'reach','actor':0}},
+            {'model':MODEL_4P,'reaction':{'type':'dahai','actor':0,'pai':'2m','tsumogiri':True}}]
         reaction = bot.react({'type':'tsumo','actor':0,'pai':'2m'})
         self.assertEqual(reaction['reach_dahai']['pai'],'2m')
         self.assertEqual(len(self.post_calls()),2)
@@ -136,9 +138,30 @@ class AkagiV3Tests(unittest.TestCase):
 
     def test_other_seat_reaction_is_rejected(self):
         bot = self.bot()
-        self.server.replies = [{'model':DEFAULT_4P,'reaction':{'type':'dahai','actor':1,'pai':'1m'}}]
+        self.server.replies = [{'model':MODEL_4P,'reaction':{'type':'dahai','actor':1,'pai':'1m'}}]
         with self.assertRaisesRegex(ValueError,'其他座位'):
             bot.react({'type':'tsumo','actor':0,'pai':'2m'})
+
+    def test_live_kita_response_is_normalized_for_sanma_advice(self):
+        from bot_manager import mjai_reaction_2_guide
+        bot = self.bot(mode=GameMode.MJ3P)
+        self.server.replies = [{'model':MODEL_3P,'reaction':{'type':'kita','actor':0,'pai':'N'},
+                                'candidates':[{'action':'nukidora','prob':.94}]}]
+        reaction = bot.react({'type':'tsumo','actor':0,'pai':'N'})
+        self.assertEqual(reaction['type'],'nukidora')
+        self.assertEqual(reaction['pai'],'N')
+        self.assertTrue(bot.model_confirmed)
+        line,options = mjai_reaction_2_guide(reaction,3)
+        self.assertIn('Nukidora',line)
+        self.assertEqual(len(options),1)
+        self.assertIn('Nukidora',options[0][0])
+        self.assertEqual(options[0][1],.94)
+
+    def test_kita_alias_does_not_bypass_other_seat_validation(self):
+        bot = self.bot(mode=GameMode.MJ3P)
+        self.server.replies = [{'model':MODEL_3P,'reaction':{'type':'kita','actor':1,'pai':'N'}}]
+        with self.assertRaisesRegex(ValueError,'其他座位'):
+            bot.react({'type':'tsumo','actor':0,'pai':'N'})
 
     def test_missing_model_report_does_not_claim_confirmation(self):
         bot = self.bot()
@@ -149,10 +172,10 @@ class AkagiV3Tests(unittest.TestCase):
 
     def test_no_legal_action_can_still_confirm_served_model(self):
         bot = self.bot()
-        self.server.replies = [{'model':DEFAULT_4P,'reaction':None}]
+        self.server.replies = [{'model':MODEL_4P,'reaction':None}]
         self.assertIsNone(bot.react({'type':'dahai','actor':1,'pai':'2m','tsumogiri':True}))
         self.assertTrue(bot.model_confirmed)
-        self.assertEqual(bot.last_served_model,DEFAULT_4P)
+        self.assertEqual(bot.last_served_model,MODEL_4P)
 
     def test_actual_majsoul_frames_reach_selected_model_and_advice_in_both_modes(self):
         from game.game_state import GameState
@@ -161,9 +184,9 @@ class AkagiV3Tests(unittest.TestCase):
         from liqi import LiqiProto,MsgType
         from test_mjmax_integration import frame
         from mjmax.proto import liqi_pb2 as pb
-        for count,model in ((4,DEFAULT_4P),(3,DEFAULT_3P)):
+        for count,model in ((4,MODEL_4P),(3,MODEL_3P)):
             with self.subTest(players=count), patch.dict('sys.modules',{'libriichi3p':None}):
-                bot = BotAkagiV3(self.url,'offline-key')
+                bot = BotAkagiV3(self.url,'offline-key',MODEL_4P,MODEL_3P)
                 self.addCleanup(bot.client.session.close)
                 state,parser = GameState(bot),LiqiProto()
                 with patch.object(LOGGER,'info'):
@@ -184,10 +207,29 @@ class AkagiV3Tests(unittest.TestCase):
                 self.assertEqual(options[0][1],.73)
                 self.assertEqual(state.get_pending_reaction(),reaction)
 
-    def test_default_model_omits_model_parameter(self):
-        bot = self.bot(model4='')
-        bot.react({'type':'tsumo','actor':0,'pai':'2m'})
-        self.assertNotIn('model',self.post_calls()[-1][3])
+    def test_unconfigured_mode_is_not_available_and_does_not_infer(self):
+        from common.utils import BotNotSupportingMode
+        bot = self.bot(mode=GameMode.MJ3P,model4='')
+        self.assertNotIn(GameMode.MJ4P,bot.supported_modes)
+        with self.assertRaises(BotNotSupportingMode):
+            bot.init_bot(0,GameMode.MJ4P)
+        self.assertEqual(self.post_calls(),[])
+
+    def test_empty_new_config_requires_manual_choice_before_network(self):
+        with patch('bot.akagiot.v3.requests.Session.request') as request:
+            with self.assertRaisesRegex(ValueError,'至少选择'):
+                BotAkagiV3(self.url,'offline-key')
+        request.assert_not_called()
+
+    def test_settings_have_no_preset_but_retain_saved_choices(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(LOGGER,'warning'):
+            path = Path(directory)/'settings.json'
+            path.write_text('{}',encoding='utf-8')
+            setting = Settings(str(path))
+            self.assertEqual((setting.akagi_v3_model_4p,setting.akagi_v3_model_3p),('',''))
+            path.write_text(json.dumps({'akagi_v3_model_4p':'4p-user-choice','akagi_v3_model_3p':'3p-user-choice'}),encoding='utf-8')
+            setting = Settings(str(path))
+            self.assertEqual((setting.akagi_v3_model_4p,setting.akagi_v3_model_3p),('4p-user-choice','3p-user-choice'))
 
     def test_legacy_credentials_are_not_reused_for_v3(self):
         with tempfile.TemporaryDirectory() as directory:

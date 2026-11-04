@@ -6,6 +6,8 @@ import requests
 
 from common.log_helper import LOGGER
 from common.utils import BotNotSupportingMode, GameMode
+from .model_report import inference_model_report
+from .http_client import direct_session
 
 
 class MortalEngineAkagiOt:
@@ -27,6 +29,10 @@ class MortalEngineAkagiOt:
         self.mode = mode
         self.timeout = timeout
         self.retries = retries
+        self.session = direct_session()
+        self.last_served_model = None
+        self.model_confirmed = False
+        self.model_report_note = '尚无旧版 OT 推理响应。'
         
         if self.mode == GameMode.MJ4P:
             self.api_path = r"/react_batch"
@@ -38,6 +44,9 @@ class MortalEngineAkagiOt:
         
     def react_batch(self, obs, masks, _invisible_obs):
         """ react_batch for mjai.Bot to call"""
+        self.last_served_model = None
+        self.model_confirmed = False
+        self.model_report_note = '等待旧版 OT 推理响应。'
         list_obs = [o.tolist() for o in obs]
         list_masks = [m.tolist() for m in masks]
         post_data = {
@@ -54,7 +63,7 @@ class MortalEngineAkagiOt:
         # retry multiple times to post and get response
         for attempt in range(self.retries):
             try:
-                r = requests.post(f'{self.server}{self.api_path}',
+                r = self.session.post(f'{self.server}{self.api_path}',
                     headers=headers,
                     data=compressed_data,
                     timeout=self.timeout)
@@ -70,7 +79,10 @@ class MortalEngineAkagiOt:
         if r.status_code != 200:
             r.raise_for_status()
         r_json = r.json()
-        return r_json['actions'], r_json['q_out'], r_json['masks'], r_json['is_greedy']
+        result = r_json['actions'], r_json['q_out'], r_json['masks'], r_json['is_greedy']
+        self.last_served_model,self.model_report_note = inference_model_report(r_json,r.headers,self.api_key)
+        self.model_confirmed = self.last_served_model is not None
+        return result
 
 # Mortal Engine Parameters:
 #

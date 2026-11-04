@@ -1,11 +1,35 @@
 # Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """Small, reusable Qt components for the dark desktop."""
 from PySide6.QtCore import Qt, QRectF, QSize
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen
+from pathlib import Path
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QIcon
 from PySide6.QtWidgets import (QAbstractButton, QFrame, QLabel, QPushButton,
-    QVBoxLayout, QHBoxLayout, QWidget, QSizePolicy, QStyledItemDelegate, QStyle)
+    QVBoxLayout, QHBoxLayout, QWidget, QSizePolicy, QStyledItemDelegate, QStyle, QLineEdit)
 from common.presentation import tile_data
 from .theme import MUTED, TEXT
+
+
+class SecretEdit(QLineEdit):
+    """Password entry with an accessible, reversible trailing eye action."""
+    def __init__(self,value='',parent=None):
+        super().__init__(value,parent)
+        self.setEchoMode(QLineEdit.Password)
+        self.visibility_action = self.addAction(QIcon(),QLineEdit.TrailingPosition)
+        self.visibility_action.setCheckable(True)
+        self.visibility_action.toggled.connect(self._reveal)
+        self._reveal(False)
+
+    def _reveal(self,visible):
+        self.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password)
+        action = self.visibility_action
+        text = '隐藏密钥' if visible else '显示密钥'
+        action.setText(text)
+        action.setToolTip(text)
+        icon = 'ui-eye-off.svg' if visible else 'ui-eye.svg'
+        action.setIcon(QIcon(str(Path(__file__).resolve().parent.parent/'resources'/icon)))
+
+    def conceal(self):
+        self.visibility_action.setChecked(False)
 
 
 class TextLabel(QLabel):

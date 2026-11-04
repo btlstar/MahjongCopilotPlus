@@ -7,15 +7,17 @@ import time
 from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QMainWindow, QWidget, QFrame, QStackedWidget,
-    QComboBox, QScrollArea, QLineEdit, QSpinBox, QPlainTextEdit, QApplication)
+    QComboBox, QScrollArea, QLineEdit, QSpinBox, QPlainTextEdit, QApplication, QSizePolicy)
 from bot_manager import mjai_reaction_2_guide
 from common.log_helper import LOGGER, LogHelper
 from common.presentation import advice_rows
 from common.utils import error_to_str, sub_file
+from mitm import proxy_endpoint
 from .boss_key import GlobalHotkey, OwnedBrowserWindows
 from .theme import GREEN, MUTED, RED, dark_titlebar
 from .components import Card, AdviceView, HandView, Switch, QuietDelegate, label, button, column, horizontal, setting_row
 from .preferences import SettingsPage, AI_KEYS, valid_url
+from .ai_feedback import loaded_models_text,runtime_models_text
 from .wardrobe import WardrobePage
 from .overlays import ModalOverlay
 
@@ -77,7 +79,7 @@ class MainWindow(QMainWindow):
             platform.model().item(platform.count()-1).setEnabled(False)
         platform.setFixedWidth(122)
         nav.addWidget(platform)
-        self.guide_button = button('游戏内提示',self.toggle_game_overlay,'Quiet',True)
+        self.guide_button = button('游戏内提示',self.toggle_game_overlay,'Toggle',True)
         nav.addWidget(self.guide_button)
         self.btn_start_browser = button('打开游戏',self.open_game,'Primary')
         nav.addWidget(self.btn_start_browser)
@@ -95,9 +97,13 @@ class MainWindow(QMainWindow):
         self.ai_status = button('● AI · 未加载',lambda:self.show_settings(1),'Quiet')
         self.ai_status.setStyleSheet('font-size:11px;')
         self.game_status.setStyleSheet('font-size:11px;')
+        self.model_status = label()
+        self.model_status.setStyleSheet('font-size:11px;')
+        self.model_status.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
+        self.model_status.setMinimumWidth(0)
         footer.addWidget(self.game_status)
         footer.addWidget(self.ai_status)
-        footer.addStretch()
+        footer.addWidget(self.model_status,1)
         footer.addWidget(button('帮助',self.show_help,'Quiet'))
         footer.addWidget(button('诊断',self.show_diagnostics,'Quiet'))
         body.addWidget(self.footer)
@@ -274,6 +280,9 @@ class MainWindow(QMainWindow):
         state,color = self._status()
         error = manager.main_thread_exception or manager.get_game_error()
         self.game_notice.setText('运行异常，详情见右下角“诊断”。' if error else '')
+        ai_error = getattr(manager.bot,'last_error',None)
+        if ai_error and not error:
+            self.game_notice.setText('AI 暂时无法给出建议，详情见“诊断”。')
         self.game_notice.setStyleSheet('color:#e27782;')
         connected = manager.get_game_client_type() is not None
         self.game_status.setText('● 雀魂 · '+('连接异常' if error else '对局中' if manager.is_in_game() else '已连接' if connected else '未连接'))
@@ -286,14 +295,23 @@ class MainWindow(QMainWindow):
         elif manager.is_bot_created():
             active = getattr(manager,'active_model_type',None) or manager.bot.name
             active = {'Local':'本地模型','MJAPI':'MJAI'}.get(active,active)
+            if getattr(manager.bot,'protocol',None)=='v3':
+                active = 'Akagi v3'
             ai_text,color = active+' · '+('同步中' if manager.is_game_syncing() else '计算中' if manager.is_bot_calculating() else '就绪'),GREEN
+            if ai_error:
+                ai_text,color = active+' · 建议异常',RED
             if manager.bot_need_update:
                 ai_text += ' · 待切换'
         else:
             ai_text,color = 'AI · 未加载',RED
         self.ai_status.setText('● '+ai_text)
-        self.ai_status.setToolTip(getattr(manager.bot,'info_str','') if manager.bot else '')
-        self.settings_page.refresh_model_status(manager.bot)
+        loaded = loaded_models_text(manager.bot) if manager.bot and not manager.is_loading_bot else ''
+        self.ai_status.setToolTip('当前已加载：'+loaded if loaded else '')
+        self.model_status.setToolTip('当前已加载：'+loaded if loaded else '')
+        model_text = loaded.partition(' · ')[2] or loaded
+        self.model_status.setText(self.model_status.fontMetrics().elidedText(
+            model_text,Qt.ElideRight,max(0,self.model_status.width())))
+        self.settings_page.refresh_ai_load()
         if getattr(self,'_ai_status_color',None)!=color:
             self.ai_status.setStyleSheet('font-size:11px;color:'+color+';')
             self._ai_status_color = color
@@ -346,13 +364,20 @@ class MainWindow(QMainWindow):
     def show_connection(self):
         modal = self._show_modal('连接与代理')
         fields = {}
-        for key,title in (('mitm_port','代理端口'),('upstream_proxy','上游代理')):
+        for key,title in (('mitm_port','Copilot 本地端口'),('upstream_proxy','上游代理地址')):
+            if key=='upstream_proxy':
+                use_upstream = Switch(bool(self.st.upstream_proxy),text='使用上游代理')
+                modal.body.addWidget(setting_row('使用上游代理','关闭后，游戏流量经 Copilot 拦截后直连。',use_upstream))
+                self.connection_upstream_switch = use_upstream
             modal.body.addWidget(label(title))
             item = QLineEdit(str(getattr(self.st,key)))
             item.setObjectName(key)
             item.setPlaceholderText('留空使用直接连接' if key=='upstream_proxy' else '')
             fields[key] = item
             modal.body.addWidget(item)
+            if key=='upstream_proxy':
+                item.setEnabled(use_upstream.isChecked())
+                use_upstream.toggled.connect(item.setEnabled)
         extra = button('浏览器与客户端设置 ⌄',name='Quiet',checkable=True)
         modal.body.addWidget(extra,0,Qt.AlignLeft)
         details = QWidget()
@@ -388,6 +413,10 @@ class MainWindow(QMainWindow):
         def save():
             try:
                 values = {key:control.text().strip() if isinstance(control,QLineEdit) else control.isChecked() if isinstance(control,Switch) else control.value() for key,control in fields.items()}
+                if not use_upstream.isChecked():
+                    values['upstream_proxy'] = ''
+                elif not values['upstream_proxy']:
+                    raise ValueError('请填写上游代理地址，或关闭“使用上游代理”以直连。')
                 if not values['mitm_port'].isdecimal():
                     raise ValueError('代理端口应为 1000–65535 的整数。')
                 values['mitm_port'] = int(values['mitm_port'])
@@ -414,6 +443,29 @@ class MainWindow(QMainWindow):
     def show_diagnostics(self):
         modal = self._show_modal('诊断与日志')
         modal.body.addWidget(label(self._status()[0],wrap=True))
+        controller = self.bot_manager.mitm_server
+        running = controller.is_running() and bool(controller.proxy_str)
+        upstream = controller.upstream_proxy if running else self.st.upstream_proxy
+        if running and controller.mode=='socks5':
+            upstream = ''
+        route = 'Copilot → '+(proxy_endpoint(upstream)+' → ' if upstream else '')+'游戏服务器'+('（直连）' if not upstream else '')
+        modal.body.addWidget(label(('当前路径：' if running else '已保存路径：')+route,wrap=True))
+        if not running:
+            modal.body.addWidget(label('本地拦截代理未启动。'))
+        elif self.bot_manager.mitm_proxinject_need_update:
+            modal.body.addWidget(label('连接设置待应用，请关闭游戏浏览器后重新打开。'))
+        if self.bot_manager.browser.last_page_error:
+            modal.body.addWidget(label(self.bot_manager.browser.last_page_error,wrap=True))
+        for title,value in (('最近转发失败',controller.ws_data_addon.last_network_error),
+                            ('最近连接关闭',controller.ws_data_addon.last_disconnect)):
+            if value:
+                modal.body.addWidget(label(title+'：'+value,wrap=True))
+        modal.body.addWidget(label(runtime_models_text(self.bot_manager),wrap=True))
+        bot = self.bot_manager.bot
+        if getattr(bot,'last_error',None):
+            modal.body.addWidget(label('推理未完成：'+str(bot.last_error),'Error',True))
+        if getattr(bot,'model_report_note',None):
+            modal.body.addWidget(label(bot.model_report_note,wrap=True))
         error = self.bot_manager.main_thread_exception or self.bot_manager.get_game_error()
         if error:
             modal.body.addWidget(label(str(error),'Error',True))

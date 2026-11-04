@@ -4,7 +4,6 @@ import logging
 import time
 import threading
 import queue
-import os
 
 from io import BytesIO
 from playwright._impl._errors import TargetClosedError
@@ -43,12 +42,18 @@ class GameBrowser:
         self._page_title:str = None
         self._last_update_time:float = 0
         self.zoomlevel_check:float = None
+        self._page_ready = False
+        self._context_closed = False
+        self.last_page_error = None
+        self._navigation_http_error = None
+        self._last_page_error_log = float('-inf')
 
         # overlay info
         self._canvas_id = None              # for overlay
         self._overlay_enabled = True
         self._last_botleft_text = None
         self._last_guide = None
+        self._overlay_start_pending = False
 
     def __del__(self):
         self.stop()
@@ -82,72 +87,41 @@ class GameBrowser:
         self._browser_thread.start()
 
 
-    def _run_browser_and_action_queue(self, url:str, proxy:str, enable_chrome_ext:bool=False):
-        """ run browser and keep processing action queue (blocking)"""
-        
-        if proxy:
-            proxy_object = {"server": proxy}
-        else:
-            proxy_object = None
-
-        # read all subfolder names from Folder.CRX and form extension list
+    def _launch_options(self,proxy,enable_chrome_ext=False):
+        """Shared launch policy for normal and extension-enabled game windows."""
+        args = ['--noerrdialogs','--test-type=webdriver',
+                f'--window-size={int(self.width)},{int(self.height) + 88}']
         if enable_chrome_ext:
             extensions_list = list_children(Folder.CHROME_EXT, True, False, True)
-            # extensions_list = []
-            # for root, dirs, files in os.walk(utils.sub_folder(Folder.CHROME_EXT)):
-            #     for extension_dir in dirs:
-            #         extensions_list.append(os.path.join(root, extension_dir))
             LOGGER.info('Extensions loaded: %s', extensions_list)
-            disable_extensions_except_args = "--disable-extensions-except=" + ",".join(extensions_list)
-            load_extension_args = "--load-extension=" + ",".join(extensions_list)
+            args += ['--disable-extensions-except='+','.join(extensions_list),
+                     '--load-extension='+','.join(extensions_list)]
+        return dict(
+            user_data_dir=utils.sub_folder(Folder.BROWSER_DATA),
+            headless=False,
+            chromium_sandbox=True,
+            viewport=None if self.resizable else {'width':self.width,'height':self.height},
+            no_viewport=self.resizable,
+            proxy={'server':proxy} if proxy else None,
+            ignore_default_args=['--enable-automation'],
+            args=args)
 
+    def _run_browser_and_action_queue(self, url:str, proxy:str, enable_chrome_ext:bool=False):
+        """ run browser and keep processing action queue (blocking)"""
         LOGGER.info('Starting Chromium, viewport=%dx%d, proxy=%s', self.width, self.height, proxy)
         with sync_playwright() as playwright:
-            if enable_chrome_ext:
-                try:
-                    # Initilize browser
-                    chromium = playwright.chromium
-                    self.context = chromium.launch_persistent_context(
-                        user_data_dir=utils.sub_folder(Folder.BROWSER_DATA),
-                        headless=False,
-                        viewport=None if self.resizable else {'width': self.width, 'height': self.height},
-                        no_viewport=self.resizable,
-                        proxy=proxy_object,
-                        ignore_default_args=["--enable-automation"],
-                        args=[
-                            "--noerrdialogs",
-                            "--no-sandbox",
-                            f"--window-size={int(self.width)},{int(self.height) + 88}",
-                            disable_extensions_except_args,
-                            load_extension_args
-                        ]
-                    )
-                except Exception as e:
-                    LOGGER.error('Error launching the browser: %s', e, exc_info=True)
-                    return
-            else:
-                try:
-                    # Initilize browser
-                    chromium = playwright.chromium
-                    self.context = chromium.launch_persistent_context(
-                        user_data_dir=utils.sub_folder(Folder.BROWSER_DATA),
-                        headless=False,
-                        viewport=None if self.resizable else {'width': self.width, 'height': self.height},
-                        no_viewport=self.resizable,
-                        proxy=proxy_object,
-                        ignore_default_args=["--enable-automation"],
-                        args=["--noerrdialogs", "--no-sandbox",
-                              f"--window-size={int(self.width)},{int(self.height) + 88}"]
-                    )
-                except Exception as e:
-                    LOGGER.error('Error launching the browser: %s', e, exc_info=True)
-                    return
+            try:
+                self.context = playwright.chromium.launch_persistent_context(
+                    **self._launch_options(proxy,enable_chrome_ext))
+            except Exception as e:
+                LOGGER.error('Error launching the browser: %s', e, exc_info=True)
+                return
 
             try:
-                self.page = self.context.new_page()
-                self.page.goto(url)
+                self._open_initial_page(url)
             except Exception as e:
-                LOGGER.error('Error opening page. Check if certificate is installed. \n%s',e)
+                self.last_page_error = '游戏网页未能打开，可在浏览器中刷新重试；网络详情见诊断。'
+                LOGGER.warning('Initial navigation failed; keeping browser open for retry: %s',e)
 
             # # Do not allow new page tab
             # def on_page(page:Page):
@@ -157,30 +131,12 @@ class GameBrowser:
             # if not enable_extensions:
             #     self.context.on("page", on_page)
 
-            self._clear_action_queue()
             # keep running actions until stop event is set
             while self._stop_event.is_set() is False:
                 self.fps_counter.frame()
-                try:        # test if page is stil alive
-                    if time.time() - self._last_update_time > 0.25:
-                        self._page_title = self.page.title()
-                        # check zoom level
-                        self.zoomlevel_check = self.page.evaluate("() => window.devicePixelRatio")
-                        if self.resizable:
-                            self._sync_game_geometry()
-                        self._last_update_time = time.time()
-                except Exception as e:
-                    LOGGER.warning("Page error %s. exiting.", e)
+                if not self._browser_step():
                     break
-
-                try:
-                    action = self._action_queue.get_nowait()
-                    action()
-                    # LOGGER.debug("Browser action %s",str(action))
-                except queue.Empty:
-                    time.sleep(0.002)
-                except Exception as e:
-                    LOGGER.error('Error processing action: %s', e, exc_info=True)
+                time.sleep(0.002)
 
             # stop event is set: close browser
             LOGGER.debug("Closing browser")
@@ -196,6 +152,99 @@ class GameBrowser:
                 LOGGER.error('Error closing browser: %s', e ,exc_info=True)
             self.init_vars()
         return
+
+    def _open_initial_page(self,url):
+        """Navigate an existing blank startup page; preserve restored user tabs."""
+        blank = next((page for page in self.context.pages
+                      if not page.is_closed() and page.url in ('about:blank','chrome://newtab/','chrome://new-tab-page/')),None)
+        self.page = blank if blank is not None else self.context.new_page()
+        self._bind_page_events()
+        self.page.goto(url,wait_until='domcontentloaded')
+
+    def _bind_page_events(self):
+        self.context.on('close',lambda *_:self._on_context_closed())
+        self.page.on('domcontentloaded',self._on_document_ready)
+        self.page.on('response',self._on_navigation_response)
+        self.page.on('crash',self._on_page_crashed)
+
+    def _on_context_closed(self):
+        self._context_closed = True
+
+    def _forget_overlay(self):
+        self._canvas_id = None
+        self._last_guide = None
+        self._last_botleft_text = None
+
+    def _on_document_ready(self):
+        # A new document has no DOM nodes from the previous one. Same-document
+        # hash/history changes do not fire DOMContentLoaded.
+        self._forget_overlay()
+        self._page_ready = False
+        self._page_title = None
+        self.zoomlevel_check = None
+        self._last_update_time = 0
+
+    def _on_navigation_response(self,response):
+        if response.request.is_navigation_request() and response.frame==self.page.main_frame:
+            self._navigation_http_error = (f'游戏网页加载失败（HTTP {response.status}），可刷新重试。'
+                                           if response.status>=400 else None)
+            self.last_page_error = self._navigation_http_error
+
+    def _on_page_crashed(self):
+        self._page_ready = False
+        self._forget_overlay()
+        self.last_page_error = '游戏标签页异常，可在浏览器中刷新重试。'
+        LOGGER.warning('Game renderer reported a crash; browser window retained for recovery')
+
+    def _poll_page(self):
+        """Probe the current document on the Playwright worker thread only."""
+        state = self.page.evaluate("""(id) => {
+            const overlay = !!id && !!document.getElementById(id);
+            if (id && !overlay) document.getElementById(id+'-guide')?.remove();
+            return {title: document.title, zoom: window.devicePixelRatio,
+                ready: document.readyState !== 'loading' && !!document.body,
+                overlay, guide: !!id && !!document.getElementById(id+'-guide')};
+        }""",self._canvas_id)
+        if self._canvas_id and not state['overlay']:
+            self._forget_overlay()
+        elif self._last_guide is not None and not state.get('guide',False):
+            self._last_guide = None
+        self._page_title = state['title']
+        self._page_ready = bool(state['ready'] and not self._navigation_http_error
+                                and self.page.url.startswith(('http://','https://')))
+        self.zoomlevel_check = state['zoom'] if self._page_ready else None
+        if self._page_ready:
+            self.last_page_error = None
+        if self._page_ready and self.resizable:
+            self._sync_game_geometry()
+
+    def _browser_step(self):
+        """Only an actual close stops the browser, not a navigation exception."""
+        if self._context_closed or self.page is None or self.page.is_closed():
+            return False
+        now = time.monotonic()
+        if now-self._last_update_time>0.25:
+            self._last_update_time = now
+            try:
+                self._poll_page()
+            except Exception as error:
+                self._page_ready = False
+                self._page_title = None
+                self.zoomlevel_check = None
+                self.last_page_error = '网页正在重新加载或暂时不可用，可在浏览器中刷新重试。'
+                if now-self._last_page_error_log>=5:
+                    LOGGER.warning('Page probe interrupted; waiting for recovery: %s',error)
+                    self._last_page_error_log = now
+        try:
+            action = self._action_queue.get_nowait()
+            action()
+        except queue.Empty:
+            pass
+        except Exception as error:
+            # Navigation can invalidate an action's JS context too. Do not
+            # close the window; the next page probe reconciles DOM state.
+            LOGGER.warning('Browser action interrupted; window retained: %s',error)
+        return True
 
     def _sync_game_geometry(self):
         dimensions = self.page.evaluate("""() => {
@@ -248,11 +297,7 @@ class GameBrowser:
 
     def is_page_normal(self):
         """ return True if page is loaded """
-        if self.page:
-            if self._page_title:
-                return True
-        else:
-            return False
+        return self.page is not None and self._page_ready
 
     def is_overlay_working(self):
         """ return True if overlay is on and working"""
@@ -306,9 +351,15 @@ class GameBrowser:
     def start_overlay(self):
         """ Queue action: Start showing the overlay"""
         self._overlay_enabled = True
-        self._last_botleft_text = None
-        self._last_guide = None
-        self._action_queue.put(self._action_start_overlay)
+        if self._overlay_start_pending or self.is_overlay_working():
+            return
+        self._overlay_start_pending = True
+        def start():
+            try:
+                self._action_start_overlay()
+            finally:
+                self._overlay_start_pending = False
+        self._action_queue.put(start)
 
     def stop_overlay(self):
         """ Queue action: Stop showing the overlay"""
@@ -401,11 +452,12 @@ class GameBrowser:
             return
         if self.is_overlay_working():   # skip if overlay already working
             return
-        self._canvas_id = utils.random_str(8) # random 8-byte alpha-numeric string
+        canvas_id = utils.random_str(8)
         js_code = f"""(() => {{
+            if (!document.body || document.readyState === 'loading') return false;
             // Create a canvas element and add it to the document body
             const canvas = document.createElement('canvas');
-            canvas.id = '{self._canvas_id}';
+            canvas.id = '{canvas_id}';
             canvas.width = {self.width}; // Width of the canvas
             canvas.height = {self.height}; // Height of the canvas
             
@@ -415,9 +467,13 @@ class GameBrowser:
             canvas.style.top = '{self.game_top}px';
             canvas.style.zIndex = '9999999'; // High z-index to ensure it is on top
             canvas.style.pointerEvents = 'none'; // Make the canvas click-through
-            document.body.appendChild(canvas);            
+            document.body.appendChild(canvas);
+            return true;
             }})()"""
-        self.page.evaluate(js_code)
+        if self.page.evaluate(js_code):
+            self._canvas_id = canvas_id
+            self._last_guide = None
+            self._last_botleft_text = None
 
     def _action_stop_overlay(self):
         """ Remove overlay from page"""
@@ -437,17 +493,21 @@ class GameBrowser:
         self._last_guide = None
 
     def _action_overlay_update_guide(self, line1: str, option_title: str, options: list[tuple[str, float]], rich_rows=None):
-        if not self.is_overlay_working():
+        if not self._overlay_enabled or not self.is_overlay_working():
             return
         if rich_rows is None:
             from common.presentation import advice_rows
             from common.lan_str import LanStrZHS
             rich_rows = advice_rows(line1,options or [],LanStrZHS())
-        self.page.evaluate(RENDER_GUIDE, {
+        rendered = self.page.evaluate(RENDER_GUIDE, {
             'id': f'{self._canvas_id}-guide', 'line': line1, 'options': options or [],
+            'ownerId':self._canvas_id,
             'left': self.game_left, 'top': self.game_top, 'width': self.width, 'height': self.height,
             'rows': rich_rows,
         })
+        if rendered is False:
+            self._forget_overlay()
+            return
         self._last_guide = (line1, option_title, options, rich_rows)
 
     def _action_overlay_clear_guide(self):

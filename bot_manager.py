@@ -57,6 +57,8 @@ class BotManager:
         self.bot_need_update:bool = True                # set this True to update bot in main thread
         self.mitm_proxinject_need_update:bool = False    # set this True to update mitm and prox inject in main thread
         self.is_loading_bot:bool = False                # is bot being loaded
+        self.bot_load_revision = 0
+        self.bot_load_error = None
         self.main_thread_exception:Exception = None     # Exception that had stopped the main thread
         self.game_exception:Exception = None            # game run time error (but does not break main thread)        
         
@@ -247,6 +249,7 @@ class BotManager:
     def _create_bot(self):
         """ create Bot object based on settings"""
         requested_type = self.st.model_type
+        self.bot_load_error = None
         try:
             self.is_loading_bot = True
             self.bot = None
@@ -259,7 +262,12 @@ class BotManager:
             self.bot = None
             self.active_model_type = None
             self.game_exception = e
-        self.is_loading_bot = False
+            self.bot_load_error = e
+        finally:
+            # Publish completion before clearing loading, so the UI cannot
+            # confuse an old ready client with completion of a saved request.
+            self.bot_load_revision = getattr(self,'bot_load_revision',0)+1
+            self.is_loading_bot = False
         
     def _create_mitm_and_proxinject(self):
         # create mitm and proxinject threads
@@ -322,6 +330,7 @@ class BotManager:
         """ things to do every loop before processing msg"""
         #  update bot if needed
         if self.bot_need_update and self.is_in_game() is False:
+            self.is_loading_bot = True
             self.bot_need_update = False
             self._create_bot()
             

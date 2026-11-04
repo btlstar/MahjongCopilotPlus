@@ -1,7 +1,12 @@
 # Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """Game-native HTML card, using CSS layout for aligned text and probabilities."""
 
-RENDER_GUIDE = r"""({id, line, options, left, top, width, height, rows}) => {
+RENDER_GUIDE = r"""({id, ownerId, line, options, left, top, width, height, rows}) => {
+    if (!document.body || document.readyState === 'loading'
+        || (ownerId && !document.getElementById(ownerId))) {
+        document.getElementById(id)?.remove();
+        return false;
+    }
     let card = document.getElementById(id);
     if (!card) {
         card = document.createElement('div');

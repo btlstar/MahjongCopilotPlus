@@ -93,7 +93,8 @@ class SettingsPersistenceTests(unittest.TestCase):
 class ConnectionStateTests(unittest.TestCase):
     def test_akagi_failed_authorization_is_not_a_ready_bot(self):
         response = SimpleNamespace(raise_for_status=lambda:None,json=lambda:{'result':'denied'})
-        with patch('bot.akagiot.bot_akagiot.requests.post',return_value=response):
+        with patch('bot.akagiot.bot_akagiot.direct_session') as session:
+            session.return_value.__enter__.return_value.post.return_value = response
             with self.assertRaises(ValueError):
                 BotAkagiOt('https://example.invalid','offline-key')
 

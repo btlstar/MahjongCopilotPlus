@@ -2,13 +2,13 @@
 """Akagi v3 MJAI API, based on its published wire protocol (no Rust copied)."""
 from copy import deepcopy
 import math
+from urllib.parse import urljoin,urlsplit
 import requests
 
 from bot.bot import Bot, GameMode
+from .http_client import direct_session
 
 DEFAULT_URL = 'https://mjapi.shinkuan.me'
-DEFAULT_4P = '4p-akg-v8b-preview'
-DEFAULT_3P = '3p-akg-v9'
 
 
 def model_game(model):
@@ -32,17 +32,62 @@ class AkagiV3Client:
             self.url = self.url[:-3]
         self.key = key.strip()
         self.timeout = timeout
-        self.session = requests.Session()
+        self.session = direct_session()
 
     def _request(self,method,route,body=None):
-        response = self.session.request(method,self.url+route,
-            headers={'Authorization':'Bearer '+self.key},json=body,
-            timeout=self.timeout if route=='/v3/react' else 8,allow_redirects=False)
-        if response.status_code>=400 or response.status_code in (301,302,303,307,308):
+        url = self.url+route
+        for hop in range(4):
+            try:
+                response = self.session.request(method,url,
+                    headers={'Authorization':'Bearer '+self.key},json=body,
+                    timeout=self.timeout if route=='/v3/react' else 8,allow_redirects=False)
+            except requests.exceptions.SSLError:
+                raise ValueError('Akagi v3 TLS 证书校验失败，请检查 HTTPS、代理与证书配置。') from None
+            except requests.exceptions.ProxyError:
+                raise ValueError('Akagi v3 代理连接失败，请检查当前代理与网络设置。') from None
+            except requests.exceptions.Timeout:
+                raise ValueError('Akagi v3 连接或读取超时，请检查网络线路。') from None
+            except requests.exceptions.RequestException:
+                raise ValueError('Akagi v3 网络请求失败，请检查服务地址、DNS 和代理连接。') from None
+            status = response.status_code
+            if status not in (301,302,303,307,308):
+                break
+            location = response.headers.get('Location')
+            if not location:
+                raise ValueError(f'Akagi v3 返回 HTTP {status}，但没有提供重定向地址。')
+            if hop==3:
+                raise ValueError('Akagi v3 重定向次数过多，请检查服务地址。')
+            target = urljoin(url,location)
+            try:
+                current,destination = urlsplit(url),urlsplit(target)
+                origin = lambda value:(value.scheme.lower(),value.hostname,(value.port or (443 if value.scheme=='https' else 80)))
+                same_origin = origin(current)==origin(destination)
+                valid = not destination.username and not destination.password and not destination.fragment
+            except ValueError:
+                valid,same_origin = False,False
+            if not valid or not same_origin:
+                try:
+                    address = urlsplit(target)
+                    host = f'{address.scheme}://{address.hostname or "?"}'
+                    if address.port:
+                        host += ':'+str(address.port)
+                    host = host.replace(self.key,'[已隐藏]') if self.key else host
+                except ValueError:
+                    host = '无效地址'
+                raise ValueError(f'Akagi v3 返回 HTTP {status}，要求跳转到不同域名、端口或协议（{host}）；未转发密钥。请核对服务根地址或代理跳转。')
+            if method not in ('GET','HEAD') and status not in (307,308):
+                raise ValueError(f'Akagi v3 返回 HTTP {status}，无法确认 POST 语义；未改成 GET 或更换模型。')
+            # 307/308 keep the method, JSON body and authorization on this origin.
+            url = target
+        if response.status_code>=400:
             if 'text/html' in response.headers.get('Content-Type','').lower():
                 raise ValueError(f'Akagi v3 返回网页或网络防护错误（HTTP {response.status_code}），请核对服务地址和网络。')
             if response.status_code in (401,403):
                 raise ValueError('Akagi v3 密钥未通过授权，或无权使用所选模型；旧版 OT 密钥不保证通用。')
+            if response.status_code==404:
+                raise ValueError('Akagi v3 接口不存在（HTTP 404），请确认接口选择为 v3，并填写服务根地址。')
+            if response.status_code==429:
+                raise ValueError('Akagi v3 请求受到限流（HTTP 429），请稍后重试并检查密钥额度。')
             raise ValueError(f'Akagi v3 请求失败（HTTP {response.status_code}），未切换到默认模型。')
         try:
             result = response.json()
@@ -61,22 +106,25 @@ class AkagiV3Client:
         return models
 
     def react(self,model,seat,events):
-        body = {'player_id':seat,'events':events}
-        if model:
-            body['model'] = model
+        if not model:
+            raise ValueError('请先为当前玩法选择模型；未使用服务端默认模型。')
+        body = {'model':model,'player_id':seat,'events':events}
         return self._request('POST','/v3/react',body)
 
 
 class BotAkagiV3(Bot):
     """Send seat-censored round history; never silently choose another model."""
-    def __init__(self,url,key,model_4p=DEFAULT_4P,model_3p=DEFAULT_3P):
+    protocol = 'v3'
+    def __init__(self,url,key,model_4p='',model_3p=''):
         super().__init__('Akagi v3 API Bot')
         self.client = AkagiV3Client(url,key)
         self.models = {'4p':model_4p.strip(),'3p':model_3p.strip()}
+        if not any(self.models.values()):
+            raise ValueError('请先获取模型列表并至少选择一个玩法的模型。')
         catalog = self.client.catalog()
         validate_models(catalog,self.models['4p'],self.models['3p'])
         self._supported_modes = [mode for mode,game in ((GameMode.MJ4P,'4p'),(GameMode.MJ3P,'3p'))
-                                 if any(model_game(model)==game for model in catalog)]
+                                 if self.models[game] and any(model_game(model)==game for model in catalog)]
         if not self._supported_modes:
             raise ValueError('此密钥没有可用的三麻或四麻模型。')
         self.events = []
@@ -94,7 +142,7 @@ class BotAkagiV3(Bot):
     def info_str(self):
         if self.model_confirmed:
             return f'Akagi v3 · 服务端回报：{self.last_served_model}'
-        return f"Akagi v3 · 请求 4P: {self.models['4p'] or '服务端默认'} / 3P: {self.models['3p'] or '服务端默认'} · 尚无推理确认"
+        return f"Akagi v3 · 配置 4P: {self.models['4p'] or '未配置'} / 3P: {self.models['3p'] or '未配置'} · 尚无推理确认"
 
     def _init_bot_impl(self,mode=GameMode.MJ4P):
         self.mode = mode
@@ -167,6 +215,10 @@ class BotAkagiV3(Bot):
             self.last_served_model = served
             self.model_confirmed = bool(served)
             return None
+        # The live v3 service emits `kita` for sanma north extraction,
+        # while Copilot's MJAI events and UI use `nukidora`.
+        if isinstance(reaction,dict) and reaction.get('type')=='kita':
+            reaction = dict(reaction,type='nukidora')
         allowed = {'none','dahai','reach','chi','pon','daiminkan','ankan','kakan','hora','ryukyoku','nukidora'}
         if not isinstance(reaction,dict) or reaction.get('type') not in allowed:
             raise ValueError('Akagi v3 返回的动作格式不正确。')

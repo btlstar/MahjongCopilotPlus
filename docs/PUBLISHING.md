@@ -17,21 +17,17 @@
 3. 使用 GitHub 按标签提供的 Source code zip／tar.gz 即可，不再准备 Windows 二进制附件。源码标签应对应实际发布的代码。
 4. 发布说明列出新增／修复、安装或迁移变化、检查结果与未验证场景。保留源码内原有版权、许可和第三方说明。
 
-## 当前分发方式调整的提交文案
+## 本次发布：v0.1.0-preview.3
 
-Summary：
+- Tag：`v0.1.0-preview.3`，对应根目录 `version` 中的 `0.1.0-preview.3`。
+- Release 标题：`MahjongCopilotPlus v0.1.0-preview.3 · AI 连接与浏览器恢复`。
+- GitHub Desktop 的 Summary／Description：复制 [COMMIT_MESSAGE.txt](COMMIT_MESSAGE.txt) 中对应内容，不复制字段标签。
+- Release 正文：复制 [RELEASE_NOTES.md](RELEASE_NOTES.md)，勾选 **Set as a pre-release**，不上传二进制附件。
 
-```text
-切换为源码发布并统一 BAT 开发入口
-```
+GitHub Desktop 中先审阅 Changes，再填写 Summary 和 Description 并 Commit；Commit 只记录到本地。随后点击 Push origin。到 GitHub Releases 创建新发布，在 Create new tag 中填写上述 tag，确认 Target 是刚推送的源码提交，再发布。
 
-Description：
+不要把 tag 指向旧提交或仅存在于本地的未提交修改。GitHub 自动生成的源码压缩包只包含该 tag 的 Git 内容，不会包含被忽略的本机设置和环境；若误将私人文件加入暂存区，应先取消并排除，不能仅依赖 .gitignore 隐藏已跟踪文件。
 
-```text
-后续版本仅维护源码，通过 start.bat 启动，不再构建或上传 exe。
-更新 README、安装、升级、发布和开发目录说明。
-统一使用 GitHub Desktop 管理的工作树，旧下载源码与历史 exe 停止更新。
-从运行依赖移除 PyInstaller，保留历史构建来源记录。
-```
+当前发布说明已使用本次 tag 的仓库绝对链接，可直接粘贴为 GitHub Release 正文；这些链接在对应 tag 推送后生效。
 
 历史打包脚本保留用于追溯旧产物，不属于后续发布步骤；不执行这些脚本，也不将其产物描述成当前推荐安装方式。
