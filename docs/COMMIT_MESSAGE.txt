@@ -1,8 +1,8 @@
 Summary:
-发布 MahjongCopilotPlus v0.1.0-preview.2
+切换为源码发布并统一 BAT 开发入口
 
 Description:
-新增 Akagi v3 接口，分别指定四麻和三麻模型。
-预设 4p-akg-v8b-preview 与 3p-akg-v9，支持获取授权模型列表。
-区分连接检查与实际模型回报，保留旧版 OT 配置。
-更新便携包、升级说明与离线打包验收。
+后续版本仅维护源码，通过 start.bat 启动，不再构建或上传 exe。
+更新 README、安装、升级、发布和开发目录说明。
+统一使用 GitHub Desktop 管理的工作树，旧下载源码与历史 exe 停止更新。
+从运行依赖移除 PyInstaller，保留历史构建来源记录。

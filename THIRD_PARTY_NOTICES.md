@@ -20,7 +20,7 @@
 
 三麻原生库与部分模型的历史分发可能含有额外条件。应查阅**实际取得版本**的原始条款，不能把其他项目 README 的说明视为重新分发授权。本项目不捆绑、重新上传或代为授予这些文件的许可。
 
-源码运行的四麻回退依赖 `riichi` 按 `requirements.txt` 安装；本次 Windows 便携包改用有对应源码的 Mortal_v4 `libriichi_2025.02.26`，不捆绑旧 wheel 原生文件，准确来源见 [依赖来源](docs/SOURCE_PROVENANCE.md)。外部原生库的源码、许可证和版本对应关系由相应分发提供。发布含原生库的 exe 前，应取得并保留准确来源和对应条款。
+源码运行的四麻回退依赖 `riichi` 按 `requirements.txt` 安装；历史 Windows 便携包曾改用有对应源码的 Mortal_v4 `libriichi_2025.02.26`，不捆绑旧 wheel 原生文件，准确来源见 [依赖来源](docs/SOURCE_PROVENANCE.md)。外部原生库的源码、许可证和版本对应关系由相应分发提供。发布含原生库的 exe 前，应取得并保留准确来源和对应条款。
 
 对于 GPL 与 AGPL 部分的组合分发，应同时保留其适用条款，并考虑 GPL v3 第 13 节与 AGPL v3 的要求；不要删除 AGPL 声明或将对应部分改称纯 GPL。[GNU 许可 FAQ](https://www.gnu.org/licenses/gpl-faq.en.html#v3Compatibility) 提供相关解释。
 
@@ -39,7 +39,7 @@
 | [Requests](https://github.com/psf/requests/blob/main/LICENSE) | HTTP 请求 | Apache 2.0 |
 | [Protocol Buffers](https://github.com/protocolbuffers/protobuf/blob/main/LICENSE) | 协议解析 | BSD 风格 |
 | [ruamel.yaml](https://pypi.org/project/ruamel.yaml/) | 配置处理 | MIT |
-| [PyInstaller](https://pyinstaller.org/en/stable/license.html) | 可选的本地打包工具 | GPL 及其 bootloader 例外；不改变应用本身的许可 |
+| [PyInstaller](https://pyinstaller.org/en/stable/license.html) | 历史打包工具，已从运行依赖移除 | GPL 及其 bootloader 例外；不改变应用本身的许可 |
 
 源码安装不包含上述包的完整运行库副本。若发布便携二进制，应按实际构建结果保留各组件的许可证、第三方声明和必要源码提供方式；本文件不能替代这些随附材料。
 

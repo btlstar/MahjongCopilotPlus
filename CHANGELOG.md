@@ -2,6 +2,13 @@
 
 本文件记录 MahjongCopilotPlus 的改动；上游历史仍保留在 Git 中。
 
+## [未发布]
+
+- 分发方式改为源码部署和 `start.bat` 启动；后续不再构建或上传 exe／Windows 便携包。
+- 更新安装、升级、发布与开发目录说明；历史打包记录保留为存档。
+- 从运行依赖移除 PyInstaller；后续每次版本更新附 Summary 和 Description。
+- 本次为分发与目录约定调整，未更改 AI 或游戏行为。
+
 ## [0.1.0-preview.2] - 2026-11-04
 
 - AkagiOT 新增 Akagi v3 接口，可分别指定四麻／三麻模型，预设 `4p-akg-v8b-preview` 与 `3p-akg-v9`。

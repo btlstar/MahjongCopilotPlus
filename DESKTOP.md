@@ -1,6 +1,6 @@
 # 桌面使用说明
 
-安装步骤见 [安装与排错](docs/INSTALL.md)。Windows 便携包完整解压后运行 `MahjongCopilotPlus.exe`，保留 `_internal` 等文件；源码用户通过 `start.bat` 启动。首个预览版为 `v0.1.0-preview.1`，三麻扩展和客户端注入组件需另行准备。
+安装步骤见[安装与排错](docs/INSTALL.md)。安装 Python 与依赖后，从唯一工作目录双击 `start.bat` 启动；后续不再构建或发布 exe。目录约定见[开发目录说明](docs/WORKSPACE.md)。本地／旧版 OT 三麻需要额外原生库，Akagi v3 三麻不需要该扩展。
 
 ## 对局页
 

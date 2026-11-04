@@ -1,3 +1,13 @@
+# 后续发布方式：仅源码
+
+从本次调整起，后续更新只发布源码，不再构建或上传 exe／Windows 便携包。使用者自行安装 Python、依赖和 Chromium，通过源码根目录 `start.bat` 启动。安装与迁移见 [INSTALL.md](INSTALL.md)、[UPGRADING.md](UPGRADING.md)。
+
+固定使用同一个 Git 工作目录，历史 exe 不会随源码更新。每次版本更新均附 Summary 和 Description，发布流程见 [PUBLISHING.md](PUBLISHING.md)。本次仅调整分发与开发目录约定，没有新增游戏或 AI 行为。
+
+---
+
+以下为历史 preview.2 记录，不代表当前或后续版本仍提供便携包。
+
 # MahjongCopilotPlus v0.1.0-preview.2
 
 本次更新加入 Akagi v3 模型选择，保留原有深色 Qt 界面、雀魂对局提示及 MajsoulMax 集成。

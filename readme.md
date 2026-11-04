@@ -11,7 +11,7 @@ MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot
 
 当前支持 **雀魂三麻／四麻**，具体可用模式取决于模型服务及本机原生库。天凤、一番街、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
 
-> 当前预览版为 `v0.1.0-preview.2`。Windows 用户请在 [Releases](https://github.com/btlstar/MahjongCopilotPlus/releases) 下载 `windows-x64.zip`，完整解压后运行 `MahjongCopilotPlus.exe`，无需安装 Python。模型与服务凭据需自行准备。三麻扩展和客户端注入组件未包含，见安装说明。源码用户安装依赖后可通过 `start.bat` 启动。Issues、PR 和未来版本均以[本仓库](https://github.com/btlstar/MahjongCopilotPlus)为准；上游的下载站和社群不是 Plus 的支持渠道。
+> 本项目现采用 **源码部署 + `start.bat` 启动**，后续版本不再构建或上传 exe／Windows 便携包。请自行安装 Python 3.11 x64、依赖与 Chromium。历史 exe 为固定快照，不会随源码更新。Issues、PR 和后续源码更新以[本仓库](https://github.com/btlstar/MahjongCopilotPlus)为准；上游下载站和社群不是 Plus 的支持渠道。
 
 ![主界面，使用离线示例数据](assets/screenshots/game.png)
 
@@ -53,11 +53,11 @@ AI 连接设置：
 - 可访问 Python 包源及 Playwright Chromium 下载源。
 - 至少一种可用 AI 来源；本仓库不附带 API Key、账户或模型权重。
 
-### Windows 便携版
+### 获取源码
 
-下载名含 `windows-x64.zip` 的发布附件，完整解压到可写目录，保留 `_internal` 及其他文件，运行 `MahjongCopilotPlus.exe`。GitHub 自动生成的 `Source code (zip)` 是源码，不是运行包。
+推荐通过 GitHub Desktop Clone 本仓库，之后在同一个工作目录 Pull、修改和运行。也可下载某一 Release 的 `Source code (zip)` 后自行安装依赖；它不是免安装运行包。后续不提供 `windows-x64.zip`。
 
-首次运行请在“设置 → AI 连接”配置服务或本地权重。本包包含四麻原生引擎及对应源码；本地模型／旧版 OT 的三麻扩展、外部客户端注入组件、模型和账户均需自行准备；Akagi v3 三麻不需要本地三麻扩展。升级与配置保留见[升级说明](docs/UPGRADING.md)。具体版本和验证边界见 [发布说明](docs/RELEASE_NOTES.md) 与 [依赖来源](docs/SOURCE_PROVENANCE.md)。
+只维护一份工作树；旧下载目录和历史 exe 不再作为开发入口。具体目录约定见[开发目录说明](docs/WORKSPACE.md)，更新及配置迁移见[升级说明](docs/UPGRADING.md)。
 
 ### 源码安装与启动
 
@@ -112,6 +112,8 @@ py -3.11 -m venv venv
 ## 文档与开发
 
 - [安装与排错](docs/INSTALL.md)
+- [开发目录与启动入口](docs/WORKSPACE.md)
+- [升级与配置迁移](docs/UPGRADING.md)
 - [资源下载与 TUN／直连排查](docs/NETWORK.md)
 - [桌面使用说明](DESKTOP.md)
 - [MajsoulMax 集成与数据更新](mjmax/INTEGRATION.md)
@@ -148,4 +150,4 @@ py -3.11 -m venv venv
 
 ---
 
-**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. The current Windows portable preview is v0.1.0-preview.2 with Akagi v3 model selection; extract the complete archive before running the exe. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. See the license and third-party notices before redistribution.
+**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. Future updates are distributed as source only; install Python and dependencies, then launch with start.bat. Historical exe builds are snapshots and are no longer updated. See the license and third-party notices before redistribution.

@@ -1,10 +1,10 @@
 # 安装与排错
 
-## Windows 便携预览包
+## 分发方式
 
-在 Releases 下载 `MahjongCopilotPlus-0.1.0-preview.2-windows-x64.zip`，完整解压到可写目录，运行 `MahjongCopilotPlus.exe`。不需要另装 Python，保留 `_internal` 与其他文件。首次运行请自行配置 AI 服务或权重。
+后续仅维护源码，通过 `start.bat` 启动，不再构建或上传 exe／Windows 便携包。历史 exe 为固定快照，不会随源码更新。使用者需要自行安装 Python、依赖和浏览器；BAT 不会代为安装这些组件。
 
-本包包含固定版本的四麻原生引擎及对应源码，见 [依赖来源](SOURCE_PROVENANCE.md)。三麻扩展、客户端注入程序、模型与账号不在包中。Akagi v3 三麻不依赖该本地三麻扩展。旧版用户先阅读[升级说明](UPGRADING.md)。下面的 Python 安装步骤仅适用于源码运行。
+建议通过 GitHub Desktop Clone 后在同一个工作目录持续更新。旧版用户先阅读[升级说明](UPGRADING.md)，避免继续打开旧 exe 或另一份源码。
 
 ## 推荐环境
 
@@ -27,7 +27,7 @@ py -3.11 -m venv venv
 
 在“设置 → AI 连接”选择来源。MJAI 使用已有用户名／账户密钥。AkagiOT 的两种接口分别保存地址与密钥：
 
-- **Akagi v3 · 可选模型**：从 `v0.1.0-preview.2` 起支持；`v0.1.0-preview.1` 的 exe 不包含此功能。默认服务根地址为 `https://mjapi.shinkuan.me`，使用对应的 v3 API Key。四麻预设 `4p-akg-v8b-preview`，三麻预设 `3p-akg-v9`；可编辑 ID 或点击“获取可用模型”选择密钥获准使用的模型。留空才使用服务端默认。指定 ID 不可用时会报错，不会偷偷降级。
+- **Akagi v3 · 可选模型**：从 `v0.1.0-preview.2` 起支持。默认服务根地址为 `https://mjapi.shinkuan.me`，使用对应的 v3 API Key。四麻预设 `4p-akg-v8b-preview`，三麻预设 `3p-akg-v9`；可编辑 ID 或点击“获取可用模型”选择密钥获准使用的模型。留空才使用服务端默认。指定 ID 不可用时会报错，不会偷偷降级。
 - **旧版 OT · 服务端默认**：兼容原有 `/check`、`/react_batch`、`/react_batch_3p` 接口。该适配没有模型选择参数；授权通过不能确认实际模型，也不能据此判断其强弱。原配置升级后仍保留此接口，不自动迁移到新服务。
 
 v3 的“测试连接”检查授权与模型列表，不会执行推理或证明已经用上所选模型。真实牌局收到服务端 `model` 回报后，配置页才显示“服务端实际模型”；若回报与指定 ID 不符，会拒绝该建议。不回报 ID 时保持未确认状态。实际可用模型由密钥套餐与服务端决定，预设不代表它们永远是最新或最强。

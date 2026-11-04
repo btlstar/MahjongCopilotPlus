@@ -6,7 +6,6 @@ numpy==1.26.4
 pillow
 --find-links https://github.com/shinkuan/Akagi/releases/expanded_assets/v0.1.1-libriichi
 riichi==0.1.1
-pyinstaller
 PySide6-Essentials==6.10.3
 
 # majsoulmax dependencies
