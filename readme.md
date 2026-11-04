@@ -9,15 +9,17 @@
 
 MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot) 的基础上持续开发，参考 [MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max) 的整合思路，接入 [MajsoulMax](https://github.com/Avenshy/MajsoulMax)，并重构桌面界面、设置和提示体验。
 
-当前支持 **雀魂三麻／四麻**，具体可用模式取决于模型服务及本机原生库。天凤、一番街、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
+当前支持 **雀魂三麻／四麻**。Akagi v3 三麻无需本地三麻扩展；本地模型与旧版 OT 的原生库要求见下文。天凤、一番街、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
 
-> 本项目现采用 **源码部署 + `start.bat` 启动**，后续版本不再构建或上传 exe／Windows 便携包。请自行安装 Python 3.11 x64、依赖与 Chromium。历史 exe 为固定快照，不会随源码更新。Issues、PR 和后续源码更新以[本仓库](https://github.com/btlstar/MahjongCopilotPlus)为准；上游下载站和社群不是 Plus 的支持渠道。
+> **源码部署，通过 `start.bat` 启动。** 请先安装 Python 3.11 x64、依赖与 Chromium；不提供 exe／免安装运行包。更新与问题反馈请使用[本仓库](https://github.com/btlstar/MahjongCopilotPlus)。
 
-![主界面，使用离线示例数据](assets/screenshots/game.png)
+![对局页：AI 建议、当前手牌及底部已加载型号](assets/screenshots/game.png)
+
+截图基于 `v0.1.0-preview.3` 的实际界面，以离线演示数据生成；`4p-demo-model`／`3p-demo-model` 为虚构示例，不是可用型号、默认型号或最新型号推荐。
 
 ## 当前版本
 
-`v0.1.0-preview.3`：完善 AI 连接与模型状态，修复刷新后的游戏内提示恢复及网络异常时程序误关浏览器的问题。仅发布源码，安装依赖后使用 BAT 启动。详见[本次发布说明](docs/RELEASE_NOTES.md)与[更新记录](CHANGELOG.md)。
+`v0.1.0-preview.3`：完善 AI 连接与模型状态，修复刷新后的游戏内提示恢复及网络异常时程序误关浏览器的问题。详见[本次发布说明](docs/RELEASE_NOTES.md)与[更新记录](CHANGELOG.md)。
 
 ## 特性
 
@@ -33,19 +35,23 @@ MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot
 <details>
 <summary>更多界面截图</summary>
 
-AI 连接设置：
+AI 连接设置：密钥显隐、按玩法选择型号、获取列表与测试连接。
 
-![AI 连接](assets/screenshots/ai.png)
+![AI 连接设置，使用虚构型号与隐藏的演示密钥](assets/screenshots/ai.png)
 
-程序内连接配置：
+游戏内提示卡片（局部截图）：与主界面共享麻将牌样式，整张卡片可拖动，不另开独立窗口。
+
+![实际游戏内 HTML 提示卡片，离线渲染](assets/screenshots/overlay.png)
+
+程序内连接配置：本地端口与上游代理分开设置，图中为关闭上游代理。
 
 ![连接与代理](assets/screenshots/proxy.png)
 
-装扮搭配参考：
+装扮搭配参考：在游戏内逐项装备，不支持 GUI 一键应用。
 
 ![装扮页](assets/screenshots/wardrobe.png)
 
-以上截图均使用离线示例数据，不代表连接到了实际账号。
+截图不包含个人账号、真实密钥或私人对局，也不表示已连接线上服务。
 
 </details>
 
@@ -59,9 +65,9 @@ AI 连接设置：
 
 ### 获取源码
 
-推荐通过 GitHub Desktop Clone 本仓库，之后在同一个工作目录 Pull、修改和运行。也可下载某一 Release 的 `Source code (zip)` 后自行安装依赖；它不是免安装运行包。后续不提供 `windows-x64.zip`。
+推荐通过 GitHub Desktop Clone 本仓库，后续在同一目录 Pull 更新。也可下载 Release 的 `Source code (zip)` 后安装依赖；该文件仅包含源码。
 
-只维护一份工作树；旧下载目录和历史 exe 不再作为开发入口。具体目录约定见[开发目录说明](docs/WORKSPACE.md)，更新及配置迁移见[升级说明](docs/UPGRADING.md)。
+更新及旧版配置迁移见[升级说明](docs/UPGRADING.md)；参与开发请参阅[工作目录约定](docs/WORKSPACE.md)。
 
 ### 源码安装与启动
 
@@ -79,7 +85,12 @@ py -3.11 -m venv venv
 
 完成安装后，可双击根目录 **`start.bat`**。它使用项目内的 `venv`，不是免安装启动器。
 
-首次启动会生成本地 `settings.json`。打开“设置 → AI 连接”，配置并测试模型来源，保存后等待 AI 加载，再点击“打开游戏”。程序会使用自己启动的浏览器进行连接和捕获。
+首次启动会生成本地 `settings.json`。以 Akagi v3 为例：
+
+1. 打开“设置 → AI 连接”，选择 `AkagiOT` 和 `Akagi v3 · 可选模型`，填写对应 API Key。
+2. 点击“获取可用模型”，在四麻／三麻下拉框选择所需型号；至少选择一种玩法，留空的玩法不启用。
+3. 测试连接后保存，等待底部状态栏显示就绪及已加载型号。测试通过只代表连接与授权检查通过。
+4. 点击“打开游戏”，在程序启动的浏览器中进入对局。顶栏“游戏内提示”控制游戏内卡片；没有建议时可从右下角“诊断”查看原因。
 
 如果显示代理证书安装错误，按[安装与排错说明](docs/INSTALL.md)处理。不要将程序生成的证书私钥、浏览器资料或含凭据的设置文件提交到 GitHub。
 
@@ -87,19 +98,20 @@ py -3.11 -m venv venv
 
 | 来源 | 需要准备 |
 | --- | --- |
-| AkagiOT | Akagi v3 可指定四麻／三麻模型；旧版 OT 使用服务端默认。两种接口分别保存地址与 API Key，见[配置说明](docs/INSTALL.md#ai-配置) |
+| Akagi v3（AkagiOT 来源） | 对应服务的 API Key；获取授权列表后手动选择四麻／三麻型号；三麻无需本地扩展 |
+| 旧版 OT（AkagiOT 来源） | 兼容旧接口的地址与密钥；使用服务端默认型号，三麻需要额外原生库 |
 | MJAI | 服务地址、已有账户的用户名和密钥，以及可用模型 |
 | 本地 Mortal | 与当前引擎兼容的权重；四麻与三麻分别选择文件 |
 
 本地模型和旧版 OT 的四麻原生依赖通过 `requirements.txt` 中的 `riichi` 安装；其三麻还需单独取得匹配 Python 版本、系统和架构的 `libriichi3p`，它不随本源码仓库分发。**Akagi v3 使用服务端推理，三麻无需该本地扩展。**具体文件名和注意事项见[安装说明](docs/INSTALL.md#三麻原生库)。模型权重和外部原生库始终遵循其原始分发条款。
 
-切换 AI 来源只切换配置表单，不代表已连接成功。保存后的新模型会在非对局状态加载；对局中更改会延后至当前对局结束。
+不同来源与新旧 Akagi 接口分别保存配置，密钥不保证通用。切换来源只切换表单；保存后的新模型在非对局状态加载，对局中更改延后至当前对局结束。详见[AI 配置说明](docs/INSTALL.md#ai-配置)。
 
 ## 装扮扩展
 
 内置集成基于 MajsoulMax `v2026.07.07`，资源／协议快照为 MajsoulData `0.16.289-4.0.51`。准确版本、来源和校验值见 [data_version.json](mjmax/config/data_version.json)，更新方式见[集成说明](mjmax/INTEGRATION.md)。这不是“永久支持所有最新皮肤”的保证。
 
-装扮在游戏内选择，个人选择写入被 Git 忽略的本地配置。GUI 中的两套搭配为参考，不会自动替换你的装备。修改效果属于本地客户端显示，不会给账号增加服务器端拥有的物品。
+装扮在游戏内选择，个人选择写入被 Git 忽略的本地配置。GUI 中的搭配为参考，不会自动替换你的装备。修改效果属于本地客户端显示，不会给账号增加服务器端拥有的物品。
 
 ## 功能范围与使用提示
 
@@ -123,7 +135,8 @@ py -3.11 -m venv venv
 - [MajsoulMax 集成与数据更新](mjmax/INTEGRATION.md)
 - [贡献指南](CONTRIBUTING.md)
 - [更新记录](CHANGELOG.md)
-- [发布说明草稿与流程](docs/PUBLISHING.md)
+- [当前版本发布说明](docs/RELEASE_NOTES.md)
+- [源码发布流程](docs/PUBLISHING.md)
 - [第三方来源与许可](THIRD_PARTY_NOTICES.md)
 
 离线检查：
@@ -134,6 +147,8 @@ py -3.11 -m venv venv
 .\venv\Scripts\python.exe tests/native_desktop_smoke.py
 .\venv\Scripts\python.exe scripts/check_publication.py
 ```
+
+重新生成 README 截图：`python scripts/capture_readme.py`。该工具使用临时配置和虚构型号渲染真实 Qt／HTML 组件，不启动真实游戏、代理或 AI 后端，不注册老板键，也不读取个人设置。
 
 桌面检查会打开临时的离线测试窗口，不登录真实游戏。源码预览通过离线检查不代表所有游戏版本、服务接口或自动点击场景均经过实战验证。
 
@@ -154,4 +169,4 @@ py -3.11 -m venv venv
 
 ---
 
-**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. Future updates are distributed as source only; install Python and dependencies, then launch with start.bat. Historical exe builds are snapshots and are no longer updated. See the license and third-party notices before redistribution.
+**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. Distributed as source only; install Python, dependencies and Chromium, then launch with start.bat. See the license and third-party notices before redistribution.

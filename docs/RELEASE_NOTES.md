@@ -27,6 +27,10 @@
 - 诊断显示游戏转发路径、HTTP 错误类别和 WebSocket 关闭元数据，新增记录不包含请求参数、代理凭据或牌局消息正文。
 - 应用层直连不能绕过系统 TUN。专属客户端需在自己的规则界面配置直连；Mihomo YAML 示例仅供对应内核使用。见[网络排查](https://github.com/btlstar/MahjongCopilotPlus/blob/v0.1.0-preview.3/docs/NETWORK.md)。
 
+## 文档与截图
+
+更新 README 的对局、AI 连接、代理配置与装扮截图，并补充实际游戏内提示卡片。全部使用临时离线数据和虚构型号，提供可重复生成的截图工具；精简历史迁移文字，补充首次选择与保存模型的操作步骤。
+
 ## 安装与升级
 
 **本版本只提供源码，不提供 exe 或 windows-x64.zip。** GitHub Release 自动生成的 `Source code (zip)`／`tar.gz` 即为源码下载，不是免安装运行包。
