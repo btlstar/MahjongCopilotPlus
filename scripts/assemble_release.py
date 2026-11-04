@@ -50,7 +50,7 @@ def collect_licenses(package):
 
 def verify_clean(package):
     settings = json.loads((package/'settings.json').read_text(encoding='utf-8'))
-    for key in ('akagi_ot_apikey','mjapi_user','mjapi_secret','akagi_ot_url','model_file','model_file_3p'):
+    for key in ('akagi_ot_apikey','akagi_v3_apikey','mjapi_user','mjapi_secret','akagi_ot_url','model_file','model_file_3p'):
         if settings.get(key):
             raise ValueError('Nonempty private/default field: '+key)
     if settings.get('enable_automation') or settings.get('auto_join_game'):
@@ -90,11 +90,13 @@ def main():
         'Configure your AI service or supply compatible local model weights.\n'
         'Models and API accounts are not included. Automatic actions are off by default.\n'
         'The optional 3-player extension and external-client proxy injector are not included.\n'
+        'Akagi v3 three-player inference does not require that local extension.\n'
         'See docs/INSTALL.md, THIRD_PARTY_NOTICES.md and SOURCE_PROVENANCE.md.\n',encoding='utf-8')
     info = {'product':'MahjongCopilotPlus','version':version,'platform':'Windows x64',
             'python':platform.python_version(),'built_at_utc':datetime.now(timezone.utc).isoformat(),
             'models_included':False,'credentials_included':False,
             'three_player_extension_included':False,'proxinject_binaries_included':False,
+            'akagi_v3_remote_three_player_supported':True,'live_v3_inference_verified':False,
             'engine':json.loads((package/'ENGINE_PROVENANCE.json').read_text(encoding='utf-8'))}
     (package/'BUILD_INFO.json').write_text(json.dumps(info,indent=2),encoding='utf-8')
     shutil.copy2(ROOT/'docs'/'SOURCE_PROVENANCE.md',package/'SOURCE_PROVENANCE.md')

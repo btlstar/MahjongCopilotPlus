@@ -292,6 +292,8 @@ class MainWindow(QMainWindow):
         else:
             ai_text,color = 'AI · 未加载',RED
         self.ai_status.setText('● '+ai_text)
+        self.ai_status.setToolTip(getattr(manager.bot,'info_str','') if manager.bot else '')
+        self.settings_page.refresh_model_status(manager.bot)
         if getattr(self,'_ai_status_color',None)!=color:
             self.ai_status.setStyleSheet('font-size:11px;color:'+color+';')
             self._ai_status_color = color

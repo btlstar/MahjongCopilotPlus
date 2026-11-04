@@ -59,7 +59,7 @@ def main():
     if 'GNU GENERAL PUBLIC LICENSE' not in (ROOT/'LICENSE').read_text(encoding='utf-8')[:200]:
         errors.append('GPL 许可证原文不完整')
     example = json.loads((ROOT/'settings.example.json').read_text(encoding='utf-8'))
-    for key in ('akagi_ot_apikey','mjapi_secret','mjapi_user'):
+    for key in ('akagi_ot_apikey','akagi_v3_apikey','mjapi_secret','mjapi_user'):
         if example.get(key):
             errors.append(f'示例配置不应包含 {key} 的真实值')
     if example.get('enable_automation') or example.get('auto_join_game'):

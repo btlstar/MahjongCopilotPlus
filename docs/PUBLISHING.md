@@ -1,11 +1,11 @@
-# v0.1.0-preview.1 发布步骤
+# v0.1.0-preview.2 发布步骤
 
 本地已准备 Windows x64 便携预览包。Commit、Push 与 Release 是三个不同动作；本次整理不会代你执行这些动作。
 
 ## GitHub Desktop
 
 1. 选择 `MahjongCopilotPlus` 仓库，确认当前分支是 `main`。
-2. 查看 Changes，保留本次功能与发布文件的全部改动，包括移除旧 Tk 界面和旧二进制的记录。个人配置、模型、证书、缓存与 `dist/` 不应出现在待提交列表。
+2. 查看 Changes，保留 Akagi v3 模型选择及本次发布文件的全部改动。个人配置、模型、证书、缓存与 `dist/` 不应出现在待提交列表。
 3. 执行 `python scripts/check_publication.py`，确认检查通过。
 4. 填写下面的 Summary，Description 可选，然后点击 **Commit to main**。这只在本地创建提交，不会上传 GitHub。
 5. 点击 **Push origin**，将源码提交推送到 `btlstar/MahjongCopilotPlus`。不要推送到上游 Copilot。
@@ -13,28 +13,27 @@
 Summary：
 
 ```text
-发布 MahjongCopilotPlus v0.1.0-preview.1
+发布 MahjongCopilotPlus v0.1.0-preview.2
 ```
 
 Description：
 
 ```text
-整合 MajsoulMax 并更新资源与协议适配。
-重构深色 Qt 界面，统一麻将牌样式与游戏内提示开关。
-增加两键老板键，完善 AI 连接配置与窗口适配。
-优化 HTTP 资源流式转发，补充离线回归和打包验收。
-整理上游署名、第三方许可、安装文档和预览版发布文件。
+新增 Akagi v3 接口，分别指定四麻和三麻模型。
+预设 4p-akg-v8b-preview 与 3p-akg-v9，支持获取授权模型列表。
+区分连接检查与实际模型回报，保留旧版 OT 配置。
+更新便携包、升级说明与离线打包验收。
 ```
 
 ## GitHub Release
 
 1. 推送完成后打开仓库网页 → Releases → Draft a new release。
-2. 新建 tag：`v0.1.0-preview.1`，Target 选择刚推送的 `main`，确认提交包含本次所有改动。
-3. 标题：`MahjongCopilotPlus v0.1.0-preview.1`。正文复制 [RELEASE_NOTES.md](RELEASE_NOTES.md) 的内容。
-4. 上传 `dist/release/` 下准备的 Windows zip、应用源码 zip、引擎源码 zip、`SHA256SUMS.txt` 和验收记录。不上传整个开发目录，不将便携包加入 Git 提交。
+2. 新建 tag：`v0.1.0-preview.2`，Target 选择刚推送的 `main`，确认提交包含本次所有改动。
+3. 标题：`MahjongCopilotPlus v0.1.0-preview.2`。正文复制 [RELEASE_NOTES.md](RELEASE_NOTES.md) 的内容。
+4. 上传 `dist/release-0.1.0-preview.2/` 下准备的 Windows zip、应用源码 zip、引擎源码 zip、`SHA256SUMS.txt` 和验收记录。不上传整个开发目录，不将便携包加入 Git 提交。
 5. 勾选 **This is a pre-release**。检查附件、许可和正文后，先 Save draft 或直接 Publish release。
 
-运行包必须完整解压。一个主程序入口不代表可以只分发孤立 exe；Chromium 等组件会保留自己的辅助进程文件。模型、API 账户、三麻扩展和外部客户端注入组件不随此包分发。
+运行包必须完整解压。一个主程序入口不代表可以只分发孤立 exe；Chromium 等组件会保留自己的辅助进程文件。模型、API 账户、本地三麻扩展和外部客户端注入组件不随此包分发；Akagi v3 三麻不依赖该本地扩展。
 
 ## 后续重建
 

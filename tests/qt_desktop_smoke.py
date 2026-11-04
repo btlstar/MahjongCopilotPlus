@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from qt_preview import create_preview,create_application,Settings
@@ -30,6 +31,7 @@ def check_gui():
     with tempfile.TemporaryDirectory() as directory:
         st = Settings(str(Path(directory)/'settings.json'))
         st.model_type = 'AkagiOT'
+        st.akagi_ot_protocol = 'legacy'
         st.akagi_ot_url = 'https://example.invalid'
         window = create_preview(st)
         window.show()
@@ -64,6 +66,47 @@ def check_gui():
         assert fields['akagi_ot_apikey'].text()=='offline-key'
         for key in ('akagi_ot_url','akagi_ot_apikey'):
             assert fields[key].height()>=fields[key].sizeHint().height()
+        protocol = fields['akagi_ot_protocol']
+        protocol.setCurrentIndex(protocol.findData('v3'))
+        pump(app)
+        assert fields['akagi_v3_apikey'].isVisible() and not fields['akagi_ot_apikey'].isVisible()
+        assert fields['akagi_v3_apikey'].text()==''  # Never copy credentials across services.
+        fields['akagi_v3_apikey'].setText('offline-v3-key')
+        expected = {'4p':'4p-akg-v8b-preview','3p':'3p-akg-v9'}
+        assert fields['akagi_v3_url'].text()=='https://mjapi.shinkuan.me'
+        for game,model in expected.items():
+            assert fields['akagi_v3_model_'+game].currentText()==model
+        catalog = [{'id':model,'game':game} for game,model in expected.items()]
+        catalog.append({'id':'4p-offline-alternative','game':'4p'})
+        def background_fixture(operation,complete):
+            complete(operation(),None)
+        with patch.object(window,'run_background',side_effect=background_fixture), patch('bot.akagiot.v3.AkagiV3Client.catalog',return_value=catalog):
+            window.settings_page.fetch_ot_button.click()
+        assert fields['akagi_v3_model_4p'].findText('4p-offline-alternative')>=0
+        assert fields['akagi_v3_model_3p'].findText('4p-offline-alternative')<0
+        assert '尚未执行推理' in window.settings_page.ai_result.text()
+        for game,model in expected.items():
+            assert fields['akagi_v3_model_'+game].currentText()==model
+        fields['akagi_v3_model_4p'].setEditText('4p-offline-typed')
+        protocol.setCurrentIndex(protocol.findData('legacy'))
+        assert fields['akagi_ot_apikey'].text()=='offline-key'
+        protocol.setCurrentIndex(protocol.findData('v3'))
+        assert fields['akagi_v3_model_4p'].currentText()=='4p-offline-typed'
+        fields['akagi_v3_model_4p'].setEditText(expected['4p'])
+        window.settings_page.save_ai()
+        assert st.akagi_ot_protocol=='v3' and window.bot_manager.bot_need_update
+        assert st.akagi_v3_model_4p==expected['4p'] and st.akagi_v3_model_3p==expected['3p']
+        page = window.settings_page
+        page.refresh_model_status(SimpleNamespace(model_confirmed=False))
+        assert '尚无' in page.ot_model_status.text()
+        page.refresh_model_status(SimpleNamespace(model_confirmed=True,last_served_model=expected['3p']))
+        assert expected['3p'] in page.ot_model_status.text()
+        page.refresh_model_status(SimpleNamespace(last_error='offline inference error'))
+        assert 'offline inference error' in page.ot_model_status.text()
+        page.refresh_model_status(None)
+        window.resize(950,800)
+        window.settings_page.pages.widget(1).verticalScrollBar().setValue(0)
+        pump(app)
         window.grab().save(str(snapshots/'ai.png'))
         window.show_settings(0)
         fields['boss_preset'].setCurrentIndex(fields['boss_preset'].findData('Alt+Z'))
@@ -134,6 +177,8 @@ def check_gui():
         loaded = json.loads(Path(st._json_file).read_text(encoding='utf-8'))
         assert loaded['mitm_port']==11001 and loaded['boss_key']=='Ctrl+Shift+F8'
     return {'ok':True,'checks':['conditional AI forms','native file chooser','provider drafts retained',
+        'separate legacy and v3 credentials','mode-specific v3 model catalog','editable model IDs retained',
+        'v3 model changes scheduled','actual served model distinguished from connection test',
         'actual backend status','two-key presets','invalid hotkey rejected','internal modal',
         'cancel does not save','port validation','proxy reload scheduled','Esc closes modal',
         'single game-overlay toggle','immediate synchronized settings','empty hand hidden','narrow layout','X shutdown']}

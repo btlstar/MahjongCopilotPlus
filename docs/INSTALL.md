@@ -2,9 +2,9 @@
 
 ## Windows 便携预览包
 
-在 Releases 下载 `MahjongCopilotPlus-0.1.0-preview.1-windows-x64.zip`，完整解压到可写目录，运行 `MahjongCopilotPlus.exe`。不需要另装 Python，保留 `_internal` 与其他文件。首次运行请自行配置 AI 服务或权重。
+在 Releases 下载 `MahjongCopilotPlus-0.1.0-preview.2-windows-x64.zip`，完整解压到可写目录，运行 `MahjongCopilotPlus.exe`。不需要另装 Python，保留 `_internal` 与其他文件。首次运行请自行配置 AI 服务或权重。
 
-本包包含固定版本的四麻原生引擎及对应源码，见 [依赖来源](SOURCE_PROVENANCE.md)。三麻扩展、客户端注入程序、模型与账号不在包中。下面的 Python 安装步骤仅适用于源码运行。
+本包包含固定版本的四麻原生引擎及对应源码，见 [依赖来源](SOURCE_PROVENANCE.md)。三麻扩展、客户端注入程序、模型与账号不在包中。Akagi v3 三麻不依赖该本地三麻扩展。旧版用户先阅读[升级说明](UPGRADING.md)。下面的 Python 安装步骤仅适用于源码运行。
 
 ## 推荐环境
 
@@ -25,7 +25,14 @@ py -3.11 -m venv venv
 
 ## AI 配置
 
-在“设置 → AI 连接”选择来源。AkagiOT 需要 `/check` 等接口与当前适配兼容的服务和 API Key；MJAI 使用已有用户名／账户密钥。不要把某个同名软件的任意服务地址直接视为兼容接口。
+在“设置 → AI 连接”选择来源。MJAI 使用已有用户名／账户密钥。AkagiOT 的两种接口分别保存地址与密钥：
+
+- **Akagi v3 · 可选模型**：从 `v0.1.0-preview.2` 起支持；`v0.1.0-preview.1` 的 exe 不包含此功能。默认服务根地址为 `https://mjapi.shinkuan.me`，使用对应的 v3 API Key。四麻预设 `4p-akg-v8b-preview`，三麻预设 `3p-akg-v9`；可编辑 ID 或点击“获取可用模型”选择密钥获准使用的模型。留空才使用服务端默认。指定 ID 不可用时会报错，不会偷偷降级。
+- **旧版 OT · 服务端默认**：兼容原有 `/check`、`/react_batch`、`/react_batch_3p` 接口。该适配没有模型选择参数；授权通过不能确认实际模型，也不能据此判断其强弱。原配置升级后仍保留此接口，不自动迁移到新服务。
+
+v3 的“测试连接”检查授权与模型列表，不会执行推理或证明已经用上所选模型。真实牌局收到服务端 `model` 回报后，配置页才显示“服务端实际模型”；若回报与指定 ID 不符，会拒绝该建议。不回报 ID 时保持未确认状态。实际可用模型由密钥套餐与服务端决定，预设不代表它们永远是最新或最强。
+
+接口依据上游 [v3 API 实现](https://github.com/shinkuan/Akagi/blob/v3/src/bot/api.rs) 与 [默认配置](https://github.com/shinkuan/Akagi/blob/v3/src/config/bot.rs) 适配；旧版和 v3 的密钥不保证通用。不要把任意同名软件的服务地址视为兼容接口，也不要在聊天或 Issue 中公开密钥。
 
 本地模型需要兼容当前 Mortal 结构的权重。四麻与三麻分别设置，可只配置一个模式。通过“浏览…”选择文件后点击“验证模型”；仅改名并不能解决模型结构或原生库不兼容。
 
@@ -39,7 +46,7 @@ py -3.11 -m venv venv
 
 ## 三麻原生库
 
-三麻还需要独立的 `libriichi3p` 扩展，适用于使用它构造状态／观测的 AI 路径，并不只限于本地权重。
+本地模型与旧版 OT 的三麻需要独立的 `libriichi3p` 扩展，以构造状态／观测。**Akagi v3 直接发送 MJAI 事件，不需要此三麻扩展**；服务端与密钥仍须支持三麻。
 
 Windows x64、Python 3.11 对应的预期路径是：
 
@@ -49,7 +56,7 @@ libriichi3p/libriichi3p-3.11-x86_64-pc-windows-msvc.pyd
 
 本仓库不附带此文件，也不自动从非公开渠道获取。请按上游 [MahjongCopilot 帮助](https://mjcopilot.com/help) 和 [Akagi](https://github.com/shinkuan/Akagi) 的说明取得兼容、允许使用的版本，并查阅其实际分发条款。不要把其他名字／模块导出的 `.pyd` 简单改名；模块名或 ABI 不一致仍会加载失败。
 
-没有这个扩展时，可先使用四麻。模型权重和三麻原生库的获取权限、商业条件及再分发授权不由本项目授予。
+没有这个扩展时，可使用四麻或已授权的 Akagi v3 三麻。模型权重和三麻原生库的获取权限、商业条件及再分发授权不由本项目授予。
 
 ## 代理证书与外部客户端
 

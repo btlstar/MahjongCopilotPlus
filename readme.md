@@ -11,7 +11,7 @@ MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot
 
 当前支持 **雀魂三麻／四麻**，具体可用模式取决于模型服务及本机原生库。天凤、一番街、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
 
-> 首个预览版为 `v0.1.0-preview.1`。Windows 用户请在 [Releases](https://github.com/btlstar/MahjongCopilotPlus/releases) 下载 `windows-x64.zip`，完整解压后运行 `MahjongCopilotPlus.exe`，无需安装 Python。模型与服务凭据需自行准备。三麻扩展和客户端注入组件未包含，见安装说明。源码用户安装依赖后可通过 `start.bat` 启动。Issues、PR 和未来版本均以[本仓库](https://github.com/btlstar/MahjongCopilotPlus)为准；上游的下载站和社群不是 Plus 的支持渠道。
+> 当前预览版为 `v0.1.0-preview.2`。Windows 用户请在 [Releases](https://github.com/btlstar/MahjongCopilotPlus/releases) 下载 `windows-x64.zip`，完整解压后运行 `MahjongCopilotPlus.exe`，无需安装 Python。模型与服务凭据需自行准备。三麻扩展和客户端注入组件未包含，见安装说明。源码用户安装依赖后可通过 `start.bat` 启动。Issues、PR 和未来版本均以[本仓库](https://github.com/btlstar/MahjongCopilotPlus)为准；上游的下载站和社群不是 Plus 的支持渠道。
 
 ![主界面，使用离线示例数据](assets/screenshots/game.png)
 
@@ -21,7 +21,7 @@ MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot
 - **统一麻将牌样式**：万、筒、索分别用红、蓝、绿区分，赤五有额外标记；主界面与游戏内提示一致。
 - **简洁提示**：只保留游戏内卡片，可拖动并记住位置；顶栏与设置页开关即时同步，关闭后仍可在主界面查看建议。
 - **两键老板键**：默认推荐 `Alt+Q`，另有 `Alt+Z`、`Alt+X` 和自定义选项，隐藏／恢复程序及它启动的游戏浏览器。
-- **多种 AI 来源**：AkagiOT、MJAI、兼容的本地 Mortal 模型；根据来源显示对应设置，本地模型可浏览选择文件。
+- **多种 AI 来源**：AkagiOT、MJAI、兼容的本地 Mortal 模型；根据来源显示对应设置，本地模型可浏览选择文件。自 preview.2 起支持 Akagi v3 四麻／三麻模型选择与实际模型回报。
 - **可选装扮扩展**：MajsoulMax 集成、资源和协议更新，以及搭配参考；当前不提供从 GUI 批量应用或对局中即时换装。
 - **窗口适配**：游戏窗口可调整大小；手动操作模式不再因 Windows 显示缩放反复弹出 100% 缩放错误。
 - **自动操作保留**：自动打牌、自动加入和定时停止归入高级设置，默认关闭。
@@ -57,7 +57,7 @@ AI 连接设置：
 
 下载名含 `windows-x64.zip` 的发布附件，完整解压到可写目录，保留 `_internal` 及其他文件，运行 `MahjongCopilotPlus.exe`。GitHub 自动生成的 `Source code (zip)` 是源码，不是运行包。
 
-首次运行请在“设置 → AI 连接”配置服务或本地权重。本包包含四麻原生引擎及对应源码；三麻原生扩展、外部客户端注入组件、模型和账户均需自行准备。具体版本和验证边界见 [发布说明](docs/RELEASE_NOTES.md) 与 [依赖来源](docs/SOURCE_PROVENANCE.md)。
+首次运行请在“设置 → AI 连接”配置服务或本地权重。本包包含四麻原生引擎及对应源码；本地模型／旧版 OT 的三麻扩展、外部客户端注入组件、模型和账户均需自行准备；Akagi v3 三麻不需要本地三麻扩展。升级与配置保留见[升级说明](docs/UPGRADING.md)。具体版本和验证边界见 [发布说明](docs/RELEASE_NOTES.md) 与 [依赖来源](docs/SOURCE_PROVENANCE.md)。
 
 ### 源码安装与启动
 
@@ -83,11 +83,11 @@ py -3.11 -m venv venv
 
 | 来源 | 需要准备 |
 | --- | --- |
-| AkagiOT | 服务地址与 API Key；项目不提供公共服务，也不承诺兼容所有同名服务版本 |
+| AkagiOT | Akagi v3 可指定四麻／三麻模型；旧版 OT 使用服务端默认。两种接口分别保存地址与 API Key，见[配置说明](docs/INSTALL.md#ai-配置) |
 | MJAI | 服务地址、已有账户的用户名和密钥，以及可用模型 |
 | 本地 Mortal | 与当前引擎兼容的权重；四麻与三麻分别选择文件 |
 
-四麻原生依赖通过 `requirements.txt` 中的 `riichi` 安装。**三麻还需要单独取得匹配 Python 版本、系统和架构的 `libriichi3p`**；它不随本源码仓库分发。具体文件名和注意事项见[安装说明](docs/INSTALL.md#三麻原生库)。模型权重和外部原生库始终遵循其原始分发条款。
+本地模型和旧版 OT 的四麻原生依赖通过 `requirements.txt` 中的 `riichi` 安装；其三麻还需单独取得匹配 Python 版本、系统和架构的 `libriichi3p`，它不随本源码仓库分发。**Akagi v3 使用服务端推理，三麻无需该本地扩展。**具体文件名和注意事项见[安装说明](docs/INSTALL.md#三麻原生库)。模型权重和外部原生库始终遵循其原始分发条款。
 
 切换 AI 来源只切换配置表单，不代表已连接成功。保存后的新模型会在非对局状态加载；对局中更改会延后至当前对局结束。
 
@@ -148,4 +148,4 @@ py -3.11 -m venv venv
 
 ---
 
-**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. The first Windows portable preview is v0.1.0-preview.1; extract the complete archive before running the exe. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. See the license and third-party notices before redistribution.
+**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. The current Windows portable preview is v0.1.0-preview.2 with Akagi v3 model selection; extract the complete archive before running the exe. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. See the license and third-party notices before redistribution.

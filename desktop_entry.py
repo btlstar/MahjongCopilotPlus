@@ -16,6 +16,10 @@ def self_test():
     import asyncio
     import main
     import torch
+    import libriichi
+    from unittest.mock import patch
+    from bot.akagiot.v3 import BotAkagiV3,DEFAULT_4P,DEFAULT_3P
+    from common.utils import GameMode
     from common import utils
     from mjmax.proto import liqi_pb2
     from mitmproxy import options
@@ -31,6 +35,38 @@ def self_test():
     from common.lan_str import LanStrZHS
     from common.settings import Settings
     import tempfile
+    # Exercise the frozen adapter with a simulated service; never use saved keys.
+    wire_calls = []
+    def offline_request(method,url,**kwargs):
+        assert kwargs['headers']['Authorization']=='Bearer offline-self-test'
+        assert not kwargs['allow_redirects']
+        if url.endswith('/v3/key'):
+            payload = {'plan':'offline-self-test'}
+        elif url.endswith('/v3/models'):
+            payload = {'models':[{'id':DEFAULT_4P,'game':'4p'},{'id':DEFAULT_3P,'game':'3p'}]}
+        else:
+            assert method=='POST' and url.endswith('/v3/react')
+            body = kwargs['json']
+            wire_calls.append(body)
+            assert 'can_act' not in body['events'][-1]
+            payload = {'model':body['model'],'reaction':{'type':'dahai','actor':body['player_id'],'pai':'1m','tsumogiri':False},
+                       'candidates':[{'action':'dahai:1m','prob':.73}]}
+        return SimpleNamespace(status_code=200,headers={},json=lambda:payload)
+    with patch('bot.akagiot.v3.requests.Session.request',side_effect=offline_request):
+        bot = BotAkagiV3('https://offline.invalid','offline-self-test')
+        try:
+            for mode,model in ((GameMode.MJ4P,DEFAULT_4P),(GameMode.MJ3P,DEFAULT_3P)):
+                bot.init_bot(1,mode)
+                bot.react({'type':'start_game','id':1})
+                bot.react({'type':'start_kyoku','bakaze':'E','dora_marker':'1s','kyoku':1,
+                    'honba':0,'kyotaku':0,'oya':1,'scores':[25000]*4,'tehais':[['1m']*13]*4})
+                reaction = bot.react({'type':'tsumo','actor':1,'pai':'2m','can_act':True})
+                assert wire_calls[-1]['model']==model
+                assert reaction['meta_options']==[('1m',.73)]
+                assert bot.model_confirmed and bot.last_served_model==model
+        finally:
+            bot.client.session.close()
+    assert libriichi.consts.obs_shape(4)==(1012,34) and libriichi.consts.ACTION_SPACE==46
     with tempfile.TemporaryDirectory() as directory:
         app = create_application()
         setting = Settings(str(Path(directory) / 'settings.json'))
@@ -40,6 +76,16 @@ def self_test():
         root.show()
         app.processEvents()
         assert root.advice_view.rows[0].findChildren(QLabel)[0].text() == '70%'
+        fields = root.settings_page.fields
+        fields['model_type'].setCurrentIndex(fields['model_type'].findData('AkagiOT'))
+        fields['akagi_ot_protocol'].setCurrentIndex(fields['akagi_ot_protocol'].findData('v3'))
+        root.show_settings(1)
+        app.processEvents()
+        assert fields['akagi_v3_model_4p'].currentText()==DEFAULT_4P
+        assert fields['akagi_v3_model_3p'].currentText()==DEFAULT_3P
+        assert fields['akagi_v3_apikey'].text()==''
+        root.settings_page.refresh_model_status(SimpleNamespace(model_confirmed=True,last_served_model=DEFAULT_3P))
+        assert DEFAULT_3P in root.settings_page.ot_model_status.text()
         root.poll.stop()
         root._shutdown_finished = True
         root.close()
@@ -75,7 +121,9 @@ def self_test():
     return {'ok': True, 'torch': torch.__version__, 'rpc_methods': len(liqi_pb2.RPC_METHODS),
             'checks': ['application imports', 'Qt dark desktop', 'protobuf', 'mitmproxy options',
                        'bundled Chromium', 'compact draggable guide', 'new dashboard',
-                       'manual mode ignores display scaling']}
+                       'manual mode ignores display scaling','pinned native engine import',
+                       'Akagi v3 model selection for both modes (simulated service)',
+                       'Akagi v3 frozen settings and actual-model display']}
 
 
 if __name__ == '__main__':

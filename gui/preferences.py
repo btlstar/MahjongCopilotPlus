@@ -12,6 +12,7 @@ from .components import Card, Switch, QuietDelegate, label, button, column, hori
 
 PROVIDERS = [('AkagiOT','AkagiOT'), ('MJAI','MJAPI'), ('本地模型','Local')]
 AI_KEYS = ('model_type','model_file','model_file_3p','akagi_ot_url','akagi_ot_apikey',
+           'akagi_ot_protocol','akagi_v3_url','akagi_v3_apikey','akagi_v3_model_4p','akagi_v3_model_3p',
            'mjapi_url','mjapi_user','mjapi_secret','mjapi_model_select')
 
 
@@ -22,7 +23,7 @@ def valid_url(value, optional=False):
     return parsed.scheme in ('http','https') and bool(parsed.hostname)
 
 
-def test_ai_connection(values):
+def test_ai_connection(values,fetch_only=False):
     """Explicit user-triggered test; never starts a match or registers an account."""
     provider = values['model_type']
     if provider == 'Local':
@@ -36,13 +37,27 @@ def test_ai_connection(values):
             raise ValueError('这些模式的模型未能加载：'+' / '.join(missing))
         return {'message':'模型验证通过：'+' / '.join(mode.value for mode in bot.supported_modes)}
     if provider == 'AkagiOT':
+        if values['akagi_ot_protocol']=='v3':
+            from bot.akagiot.v3 import AkagiV3Client,validate_models
+            models = AkagiV3Client(values['akagi_v3_url'],values['akagi_v3_apikey']).catalog()
+            if not models:
+                raise ValueError('密钥已授权，但没有可用模型。')
+            error = None
+            try:
+                validate_models(models,values['akagi_v3_model_4p'],values['akagi_v3_model_3p'])
+            except ValueError as exc:
+                if not fetch_only:
+                    raise
+                error = str(exc)
+            return {'message':error or f'已获取 {len(models)} 个可用模型。密钥与模型检查通过；尚未执行推理。',
+                    'ot_models':models,'selection_error':bool(error)}
         import requests
         response = requests.post(values['akagi_ot_url'].rstrip('/')+'/check',
                                  headers={'Authorization':values['akagi_ot_apikey']}, timeout=8)
         response.raise_for_status()
         if response.json().get('result') != 'success':
             raise ValueError('服务未通过授权检查，请检查 API Key。')
-        return {'message':'AkagiOT 连接与授权检查通过。'}
+        return {'message':'旧版 OT 授权通过；此接口未指定模型，使用服务端默认。要选择模型请切换 Akagi v3。'}
     from bot.mjapi.mjapi import MjapiClient
     client = MjapiClient(values['mjapi_url'].rstrip('/'), timeout=8)
     if not values['mjapi_user'] or not values['mjapi_secret']:
@@ -204,8 +219,38 @@ class SettingsPage(QWidget):
                     self._field(layout,title,self._model_file(key,title))
                 layout.addWidget(label('选择兼容的 Mortal 权重；两种模式分别配置，可只启用一种。',wrap=True))
             elif provider=='AkagiOT':
-                self._field(layout,'服务地址',self._entry('akagi_ot_url'))
-                self._field(layout,'API Key',self._entry('akagi_ot_apikey',password=True))
+                protocol = self._combo('akagi_ot_protocol',[('Akagi v3 · 可选模型','v3'),('旧版 OT · 服务端默认','legacy')],self.st.akagi_ot_protocol)
+                self._field(layout,'接口',protocol)
+                self.ot_forms = {}
+                for kind in ('v3','legacy'):
+                    form = QWidget()
+                    form_body = column(form,0,9)
+                    prefix = 'akagi_v3' if kind=='v3' else 'akagi_ot'
+                    self._field(form_body,'服务地址',self._entry(prefix+'_url'))
+                    self._field(form_body,'API Key',self._entry(prefix+'_apikey',password=True))
+                    if kind=='v3':
+                        from bot.akagiot.v3 import DEFAULT_4P,DEFAULT_3P
+                        choices = horizontal(spacing=12)
+                        for key,title,default in (('akagi_v3_model_4p','四麻模型',DEFAULT_4P),('akagi_v3_model_3p','三麻模型',DEFAULT_3P)):
+                            box = QWidget()
+                            fields = column(box,0,6)
+                            control = self._combo(key,[('',''),(default,default)],getattr(self.st,key))
+                            control.setEditable(True)
+                            control.lineEdit().setPlaceholderText('留空：服务端默认')
+                            control.setMinimumWidth(0)
+                            control.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Fixed)
+                            self._field(fields,title,control)
+                            choices.addWidget(box,1)
+                        form_body.addLayout(choices)
+                        form_body.addWidget(label('使用 Akagi v3 对应的密钥；旧版 OT 密钥不保证通用。预设模型以服务端授权列表为准。',wrap=True))
+                        self.ot_model_status = label('尚无推理回报。连接测试仅验证授权与模型可用性。',wrap=True)
+                        form_body.addWidget(self.ot_model_status)
+                    else:
+                        form_body.addWidget(label('旧接口不提供模型选择。连接成功仅代表密钥授权通过，不能确认具体模型。',wrap=True))
+                    layout.addWidget(form)
+                    self.ot_forms[kind] = form
+                protocol.currentIndexChanged.connect(self._ot_protocol_changed)
+                self._ot_protocol_changed()
             else:
                 self._field(layout,'服务地址',self._entry('mjapi_url'))
                 self._field(layout,'用户名',self._entry('mjapi_user'))
@@ -221,6 +266,8 @@ class SettingsPage(QWidget):
         actions = horizontal()
         self.test_button = button('测试连接',self.test_connection)
         actions.addWidget(self.test_button)
+        self.fetch_ot_button = button('获取可用模型',lambda checked=False:self.test_connection(fetch_only=True),'Quiet')
+        actions.addWidget(self.fetch_ot_button)
         actions.addStretch()
         actions.addWidget(button('保存配置',self.save_ai,'Primary'))
         card.body.addLayout(actions)
@@ -228,6 +275,25 @@ class SettingsPage(QWidget):
         body.addWidget(label('各来源的配置分别保留。对局中保存的 AI 更改会在当前对局结束后加载。',wrap=True))
         self.fields['model_type'].currentIndexChanged.connect(self._provider_changed)
         self._provider_changed()
+
+    def _ot_protocol_changed(self):
+        protocol = self.fields['akagi_ot_protocol'].currentData()
+        for kind,form in self.ot_forms.items():
+            form.setVisible(kind==protocol)
+        if hasattr(self,'fetch_ot_button'):
+            self.fetch_ot_button.setVisible(self.fields['model_type'].currentData()=='AkagiOT' and protocol=='v3')
+            self.ai_result.clear()
+
+    def refresh_model_status(self,bot):
+        if getattr(bot,'last_error',None):
+            self.ot_model_status.setText('推理未完成：'+bot.last_error)
+            self.ot_model_status.setStyleSheet('color:#e27782;')
+        elif getattr(bot,'model_confirmed',False):
+            self.ot_model_status.setText('服务端实际模型：'+bot.last_served_model)
+            self.ot_model_status.setStyleSheet('color:#73c7ae;')
+        else:
+            self.ot_model_status.setText('尚无 v3 推理回报；连接测试不代表已经使用所选模型。')
+            self.ot_model_status.setStyleSheet('color:#959ba5;')
 
     def _model_file(self,key,title):
         box = QWidget()
@@ -253,13 +319,14 @@ class SettingsPage(QWidget):
         if self.pages.count()>1:
             self.pages.widget(1).verticalScrollBar().setValue(0)
         self.test_button.setText('验证模型' if provider=='Local' else '测试连接')
+        self.fetch_ot_button.setVisible(provider=='AkagiOT' and self.fields['akagi_ot_protocol'].currentData()=='v3')
         self.ai_result.clear()
 
     def ai_values(self):
         values = {}
         for key in AI_KEYS:
             item = self.fields[key]
-            values[key] = item.currentData() if key=='model_type' else item.currentText() if isinstance(item,QComboBox) else item.text().strip()
+            values[key] = item.currentData() if key in ('model_type','akagi_ot_protocol') else item.currentText().strip() if isinstance(item,QComboBox) else item.text().strip()
         provider = values['model_type']
         if provider=='Local':
             selected = [values[key] for key in ('model_file','model_file_3p') if values[key]]
@@ -269,11 +336,13 @@ class SettingsPage(QWidget):
                 if not Path(sub_file(Folder.MODEL,path)).is_file():
                     raise ValueError('模型文件不存在，请使用“浏览…”重新选择。')
         else:
-            url_key = 'akagi_ot_url' if provider=='AkagiOT' else 'mjapi_url'
+            url_key = ('akagi_v3_url' if values['akagi_ot_protocol']=='v3' else 'akagi_ot_url') if provider=='AkagiOT' else 'mjapi_url'
             if not valid_url(values[url_key]):
                 raise ValueError('请输入有效的 http:// 或 https:// 服务地址。')
             if provider=='MJAPI' and (not values['mjapi_user'] or not values['mjapi_secret']):
                 raise ValueError('请填写已有账户的用户名和密钥。')
+            if provider=='AkagiOT' and values['akagi_ot_protocol']=='v3' and not values['akagi_v3_apikey']:
+                raise ValueError('请填写 Akagi v3 对应的 API Key；不会自动使用旧服务的密钥。')
         return values
 
     def save_ai(self):
@@ -286,17 +355,19 @@ class SettingsPage(QWidget):
         except (ValueError,OSError) as error:
             self.feedback(self.ai_result,str(error),True)
 
-    def test_connection(self):
+    def test_connection(self,fetch_only=False):
         try:
             values = self.ai_values()
         except ValueError as error:
             self.feedback(self.ai_result,str(error),True)
             return
         self.test_button.setEnabled(False)
+        self.fetch_ot_button.setEnabled(False)
         self.ai_result.setText('正在验证模型…' if values['model_type']=='Local' else '正在测试连接…')
         provider = values['model_type']
         def complete(result,error):
             self.test_button.setEnabled(True)
+            self.fetch_ot_button.setEnabled(True)
             if provider!=self.fields['model_type'].currentData():
                 return
             try:
@@ -316,8 +387,16 @@ class SettingsPage(QWidget):
                 model.addItems(result['models'])
                 if current in result['models']:
                     model.setCurrentText(current)
-            self.feedback(self.ai_result,result['message'])
-        self.owner.run_background(lambda:test_ai_connection(values),complete)
+            if 'ot_models' in result:
+                from bot.akagiot.v3 import model_game
+                for key,game in (('akagi_v3_model_4p','4p'),('akagi_v3_model_3p','3p')):
+                    control = self.fields[key]
+                    current = control.currentText()
+                    control.clear()
+                    control.addItems(['']+[m['id'] for m in result['ot_models'] if model_game(m)==game])
+                    control.setEditText(current)
+            self.feedback(self.ai_result,result['message'],result.get('selection_error',False))
+        self.owner.run_background(lambda:test_ai_connection(values,fetch_only),complete)
 
     def _platforms(self,body):
         card = Card()

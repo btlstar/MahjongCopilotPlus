@@ -34,7 +34,7 @@ class PublicationTests(unittest.TestCase):
             (config/'settings.yaml').write_text('private-canary-token',encoding='utf-8')
             (config/'settings.mod.yaml').write_text('private-canary-equipment',encoding='utf-8')
             (root/'settings.json').write_text('private-canary-apikey',encoding='utf-8')
-            (root/'settings.example.json').write_text('{"akagi_ot_apikey":""}',encoding='utf-8')
+            (root/'settings.example.json').write_text('{"akagi_ot_apikey":"","akagi_v3_apikey":""}',encoding='utf-8')
             for name in ('version','LICENSE','NOTICE.md','THIRD_PARTY_NOTICES.md','readme.md'):
                 (root/name).write_text('public',encoding='utf-8')
             (root/'LICENSES').mkdir()

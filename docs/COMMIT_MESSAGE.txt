@@ -1,9 +1,8 @@
 Summary:
-发布 MahjongCopilotPlus v0.1.0-preview.1
+发布 MahjongCopilotPlus v0.1.0-preview.2
 
 Description:
-整合 MajsoulMax 并更新资源与协议适配。
-重构深色 Qt 界面，统一麻将牌样式与游戏内提示开关。
-增加两键老板键，完善 AI 连接配置与窗口适配。
-优化 HTTP 资源流式转发，补充离线回归和打包验收。
-整理上游署名、第三方许可、安装文档和预览版发布文件。
+新增 Akagi v3 接口，分别指定四麻和三麻模型。
+预设 4p-akg-v8b-preview 与 3p-akg-v9，支持获取授权模型列表。
+区分连接检查与实际模型回报，保留旧版 OT 配置。
+更新便携包、升级说明与离线打包验收。

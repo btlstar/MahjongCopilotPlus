@@ -59,6 +59,13 @@ class Settings:
         # akagi ot model
         self.akagi_ot_url:str = self._get_value("akagi_ot_url", "")
         self.akagi_ot_apikey:str = self._get_value("akagi_ot_apikey", "")
+        # Legacy credentials stay bound to the old endpoint; v3 has its own key.
+        old_ot = bool(self.akagi_ot_url or self.akagi_ot_apikey)
+        self.akagi_ot_protocol = self._get_value('akagi_ot_protocol','legacy' if old_ot else 'v3',lambda v:v in ('legacy','v3'))
+        self.akagi_v3_url = self._get_value('akagi_v3_url','https://mjapi.shinkuan.me',self.valid_url)
+        self.akagi_v3_apikey = self._get_value('akagi_v3_apikey','')
+        self.akagi_v3_model_4p = self._get_value('akagi_v3_model_4p','4p-akg-v8b-preview',lambda v:isinstance(v,str))
+        self.akagi_v3_model_3p = self._get_value('akagi_v3_model_3p','3p-akg-v9',lambda v:isinstance(v,str))
         # for mjapi
         self.mjapi_url:str = self._get_value("mjapi_url", "https://mjai.7xcnnw11phu.eu.org", self.valid_url)
         self.mjapi_user:str = self._get_value("mjapi_user", "")

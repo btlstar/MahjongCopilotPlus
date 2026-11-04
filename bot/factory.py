@@ -1,3 +1,4 @@
+# Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """ Bot factory"""
 from common.settings import Settings
 from common.utils import Folder, sub_file
@@ -21,7 +22,12 @@ def get_bot(settings:Settings) -> Bot:
             }
             bot = BotMortalLocal(model_files)
         case "AkagiOT":
-            bot = BotAkagiOt(settings.akagi_ot_url, settings.akagi_ot_apikey)
+            if settings.akagi_ot_protocol=='v3':
+                from .akagiot.v3 import BotAkagiV3
+                bot = BotAkagiV3(settings.akagi_v3_url,settings.akagi_v3_apikey,
+                                 settings.akagi_v3_model_4p,settings.akagi_v3_model_3p)
+            else:
+                bot = BotAkagiOt(settings.akagi_ot_url, settings.akagi_ot_apikey)
         case "MJAPI":
             bot = BotMjapi(settings)
         case _:
