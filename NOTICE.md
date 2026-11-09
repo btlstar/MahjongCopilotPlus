@@ -22,6 +22,12 @@ MahjongCopilotPlus 由 btlstar 维护，是在以下开源项目基础上继续�
 
 详细行为与边界见 [CHANGELOG.md](CHANGELOG.md)。变更文件中保留原有版权文字；修改标记不表示 Plus 对上游内容享有独占版权。
 
+## 一番街接入（2026-11-05）
+
+`game/riichicity/protocol.py` 的协议转换与状态行为参考并改编自 Akagi v3 的 `src/bridge/riichi_city`（Copyright 2026 Shinkuan，Apache 2.0）；以 Python 实现帧解析、事件转换与当前 AI／Qt 接口，并增加严格状态检查和离线测试。保留 [Apache 2.0](LICENSES/Apache-2.0.txt) 与[上游 NOTICE](LICENSES/Akagi-NOTICE.txt)，具体来源与文件摘要见[记录](game/riichicity/PROVENANCE.md)。上游 NOTICE 涉及的其他模块不表示均被本项目复制。
+
+RiichiCityUnlock 作为用户单独提供的外部进程，通过其公开的 HTTP 代理入口组合，不复制或反编译其程序，不重新授权或捆绑分发。proxinject 仍是外部原生依赖，只对本程序启动的客户端进程使用其公开命令行接口。
+
 ## 名称与资产
 
 MahjongCopilotPlus 仅表示本派生项目。游戏名称、角色、美术、音频、协议所涉及的权利及第三方标识仍属于相应权利人。本项目的代码许可不授予这些素材或标识的额外使用权。

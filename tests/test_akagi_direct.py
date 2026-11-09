@@ -44,10 +44,13 @@ class Handler(BaseHTTPRequestHandler):
 
 class AkagiDirectTests(unittest.TestCase):
     def test_v3_legacy_and_ui_checks_ignore_dead_environment_proxy(self):
-        with ThreadingHTTPServer(('127.0.0.1',0),Handler) as server, socket.socket() as dead:
+        server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        self.addCleanup(server.server_close)
+        with socket.socket() as dead:
             server.paths = []
             worker = threading.Thread(target=server.serve_forever,daemon=True)
             worker.start()
+            self.addCleanup(worker.join,2)
             self.addCleanup(server.shutdown)
             dead.bind(('127.0.0.1',0))  # Deliberately not listening.
             broken = f'http://127.0.0.1:{dead.getsockname()[1]}'

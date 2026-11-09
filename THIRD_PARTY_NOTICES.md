@@ -10,7 +10,8 @@
 | [MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max) | Copilot／MajsoulMax 整合参考 | 该仓库声明 GPL v3；在 README 和 NOTICE 中明确注明来源 |
 | [MajsoulMax](https://github.com/Avenshy/MajsoulMax) | `mjmax/plugin/mod.py` 等装扮逻辑的来源 | 上游 GPL v3；保留 Avenshy 署名，集成改动见 `mjmax/INTEGRATION.md` |
 | [Mortal](https://github.com/Equim-chan/Mortal) | 上游继承的 `bot/local/model.py`、相关模型结构与 libriichi 接口 | 上游为 AGPL v3；相应代码保持其适用许可，另附 [AGPL 原文](LICENSES/AGPL-3.0.txt)；不声称单靠 GPL 即覆盖这些部分 |
-| [Akagi](https://github.com/shinkuan/Akagi) | 引擎／模型适配参考及外部原生依赖来源 | 具体模型、原生库和对应版本依其原始条款使用；不把这些外部文件重新标记为 GPL |
+| [Akagi](https://github.com/shinkuan/Akagi) | 一番街协议转换与状态行为改编；引擎／模型适配参考及外部原生依赖来源 | 一番街 v3 桥接参考部分为 Apache 2.0，保留[原文](LICENSES/Apache-2.0.txt)、[上游 NOTICE](LICENSES/Akagi-NOTICE.txt)与[来源摘要](game/riichicity/PROVENANCE.md)；外部模型／原生库仍依其具体版本条款 |
+| [RiichiCityUnlock](https://github.com/Avenshy/RiichiCityUnlock) | 可选外部 HTTP 代理进程组合 | 本仓库不含其源码、exe、DLL 或私人配置，不修改其免费／捐赠模式；用户自行取得并遵循其分发条款 |
 | [proxinject](https://github.com/PragmaTwice/proxinject) | Windows 客户端代理注入接口 | 保留 [Apache 2.0 文本](proxinject/LICENSE)；当前工作树不分发其 exe／DLL |
 | [MajsoulData](https://github.com/Avenshy/MajsoulData) | `mjmax/config/max_data.yaml`、描述符及协议快照 | 来源版本与 SHA256 保存在 `data_version.json`；数据／生成协议不代表游戏素材获得授权 |
 

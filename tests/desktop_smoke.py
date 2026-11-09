@@ -86,6 +86,49 @@ def check_browser():
         label = guide.locator('[data-guide-label]').first.bounding_box()
         page.mouse.click(label['x'] + 5, label['y'] + 5)
         assert page.evaluate('window.gameClicks') == 0
+        # The actual HTML card changes hierarchy without resizing individual rows.
+        sizes=[]
+        for weights,count in (((.82,.10,.04),1),((.46,.43,.07),2),((.34,.33,.30),3)):
+            browser._action_overlay_update_guide('切🀏九萬','',
+                list(zip(('🀏九萬','🀁南','🀡九筒'),weights)))
+            elements=guide.locator('[data-guide-row]')
+            assert guide.locator('[data-guide-emphasis="true"]').count()==count
+            assert guide.locator('[data-guide-divider]').count()==(0 if count==3 else 1)
+            if count<3:
+                assert guide.locator('[data-guide-divider]').evaluate('(e)=>e.previousElementSibling') is not None
+                before=guide.locator('[data-guide-divider]').evaluate('(e)=>[...e.parentNode.children].indexOf(e)')
+                assert before==count
+            colors=guide.locator('[data-guide-emphasis="true"] [data-guide-probability]').evaluate_all('(nodes)=>nodes.map(n=>getComputedStyle(n).color)')
+            assert len(set(colors))==1
+            assert colors[0]==('rgb(234, 213, 157)' if count==1 else 'rgb(238, 240, 243)')
+            sizes.append(elements.evaluate_all('(nodes)=>nodes.map(n=>({height:n.getBoundingClientRect().height,font:getComputedStyle(n.querySelector("[data-guide-probability]")).fontSize}))'))
+        assert sizes[0]==sizes[1]==sizes[2]
+        browser._action_overlay_update_guide('切🀏九萬','',
+            [('🀏九萬',.24),('🀁南',.19),('🀡九筒',.09)])
+        # Reproduce the reported riichi 100% / same-tile dama 0% mismatch.
+        from bot_manager import mjai_reaction_2_guide
+        from common.lan_str import LanStrZHS
+        from common.presentation import advice_rows
+        reaction={'type':'reach','actor':0,
+                  'meta_options':[('reach',1.0),('5p',0.0),('8m',0.0)],
+                  'reach_dahai':{'type':'dahai','actor':0,'pai':'5p'}}
+        lan=LanStrZHS()
+        line,options=mjai_reaction_2_guide(reaction,3,lan)
+        browser._action_overlay_update_guide(line,'',options,advice_rows(line,options,lan))
+        assert guide.locator('[data-guide-probability]').all_text_contents()==['100%','0%','0%']
+        assert guide.locator('[data-guide-label]').first.get_attribute('aria-label')==line
+        assert guide.inner_text().count(lan.RIICHI)==1
+        assert guide.locator('[data-guide-probability]').first.evaluate('(e)=>getComputedStyle(e).color')=='rgb(234, 213, 157)'
+        assert guide.locator('[data-guide-tile="5p"]').count()==2
+        # Missing policy remains blank, including the renderer's legacy fallback.
+        legacy_options=[(lan.mjai2str('reach'),1.0),options[1]]
+        from game.guide_overlay import RENDER_GUIDE
+        page.evaluate(RENDER_GUIDE,{'id':f'{browser._canvas_id}-guide','ownerId':browser._canvas_id,
+            'line':line,'options':legacy_options,'rows':None,
+            'left':0,'top':0,'width':1280,'height':720})
+        assert guide.locator('[data-guide-probability]').first.inner_text()==''
+        browser._action_overlay_update_guide('切🀏九萬','',
+            [('🀏九萬',.24),('🀁南',.19),('🀡九筒',.09)])
         original = guide.bounding_box()
         handle = grip.bounding_box()
         page.mouse.move(handle['x'] + handle['width'] / 2, handle['y'] + handle['height'] / 2)
@@ -163,7 +206,7 @@ def check_browser():
         from common.lan_str import LanStrZHS
         manager = BotManager.__new__(BotManager)
         manager.browser = browser
-        manager.st = SimpleNamespace(enable_overlay=True,show_game_status_overlay=False,lan=LanStrZHS)
+        manager.st = SimpleNamespace(platform='majsoul',enable_overlay=True,show_game_status_overlay=False,lan=LanStrZHS)
         manager.get_pending_reaction = lambda: {'type':'dahai','pai':'6m',
             'meta_options':[('6m',.67),('S',.21),('N',.08)]}
         def drain():

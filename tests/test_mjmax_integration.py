@@ -132,6 +132,93 @@ class ModIntegrationTests(unittest.TestCase):
         self.send(frame(3, '', pb.ResCommon(), 21), False)
         self.assertNotIn(21, self.addon.parsers['lobby'].res_type)
 
+    def room_player_fixture(self, account_id=123456):
+        player = pb.PlayerGameView(account_id=account_id,avatar_id=400101,nickname='original')
+        player.character.charid, player.character.skin = 200001, 400101
+        player.character.exp, player.character.level = 123, 2
+        player.character.rewarded_level.extend([1,2])
+        return player
+
+    def select_room_character(self):
+        self.plugin.settings['config']['character'] = 200002
+        self.plugin.settings['config']['characters'][200002] = 400201
+
+    def assert_room_identity(self, player):
+        self.assertEqual(player.avatar_id,400201)
+        self.assertEqual(player.character.charid,200002)
+        self.assertEqual(player.character.skin,400201)
+        self.assertEqual(list(player.character.rewarded_level),[1,2,3,4,5])
+
+    def test_room_updates_keep_character_and_avatar_consistent(self):
+        self.login()
+        self.select_room_character()
+        response = pb.NotifyRoomPlayerUpdate(owner_id=123456,seq=7,robot_count=1)
+        response.player_list.add().CopyFrom(self.room_player_fixture())
+        peer = response.player_list.add()
+        peer.CopyFrom(self.room_player_fixture(456789))
+        peer_before = peer.SerializeToString()
+        response.positions.extend([0,1])
+        message = self.send(frame(1,'.lq.NotifyRoomPlayerUpdate',response),False)
+        result = body(message.content,pb.NotifyRoomPlayerUpdate)
+        self.assert_room_identity(result.player_list[0])
+        self.assertEqual(result.player_list[1].SerializeToString(),peer_before)
+        self.assertEqual((result.owner_id,result.seq,result.robot_count),(123456,7,1))
+        self.assertEqual(list(result.positions),[0,1])
+
+    def test_create_join_and_fetch_room_share_the_selected_character(self):
+        self.login()
+        self.select_room_character()
+        for method, cls in (('createRoom',pb.ResCreateRoom),('joinRoom',pb.ResJoinRoom),('fetchRoom',pb.ResSelfRoom)):
+            with self.subTest(method=method):
+                response = cls()
+                response.room.room_id, response.room.seq = 54321, 9
+                response.room.persons.add().CopyFrom(self.room_player_fixture())
+                response.room.persons.add().CopyFrom(self.room_player_fixture(456789))
+                other = response.room.persons[1].SerializeToString()
+                result = body(self.exchange('.lq.Lobby.'+method,response).content,cls)
+                self.assert_room_identity(result.room.persons[0])
+                self.assertEqual(result.room.persons[1].SerializeToString(),other)
+                self.assertEqual((result.room.room_id,result.room.seq),(54321,9))
+
+    def test_room_ready_notification_is_not_changed_or_faked(self):
+        self.login()
+        ready = pb.NotifyRoomPlayerReady(account_id=123456,ready=True,seq=12)
+        raw = frame(1,'.lq.NotifyRoomPlayerReady',ready)
+        self.assertEqual(self.send(raw,False).content,raw)
+        self.assertEqual(self.injected,[])
+
+    def test_room_character_rewrite_preserves_unknown_protobuf_fields(self):
+        self.login()
+        self.select_room_character()
+        response = pb.NotifyRoomPlayerUpdate()
+        player = response.player_list.add()
+        player.CopyFrom(self.room_player_fixture())
+        unknown = b'\xa0\x06\x07'  # Future Character field 100.
+        player.character.ParseFromString(player.character.SerializeToString()+unknown)
+        result = body(self.send(frame(1,'.lq.NotifyRoomPlayerUpdate',response),False).content,pb.NotifyRoomPlayerUpdate)
+        self.assert_room_identity(result.player_list[0])
+        self.assertIn(unknown,result.player_list[0].character.SerializeToString())
+
+    def test_room_with_unknown_account_does_not_rewrite_zero_account(self):
+        self.select_room_character()
+        response = pb.NotifyRoomPlayerUpdate()
+        response.player_list.add().CopyFrom(self.room_player_fixture(0))
+        expected = response.player_list[0].SerializeToString()
+        result = body(self.send(frame(1,'.lq.NotifyRoomPlayerUpdate',response),False).content,pb.NotifyRoomPlayerUpdate)
+        self.assertEqual(result.player_list[0].SerializeToString(),expected)
+
+    def test_room_safe_mode_preserves_own_selected_character(self):
+        self.login()
+        self.select_room_character()
+        self.plugin.settings['config']['safe_mode'] = True
+        response = pb.NotifyRoomPlayerUpdate()
+        response.player_list.add().CopyFrom(self.room_player_fixture())
+        peer = response.player_list.add(account_id=456789,avatar_id=400301)
+        peer.character.charid,peer.character.skin = 200003,400301
+        result = body(self.send(frame(1,'.lq.NotifyRoomPlayerUpdate',response),False).content,pb.NotifyRoomPlayerUpdate)
+        self.assert_room_identity(result.player_list[0])
+        self.assertEqual((result.player_list[1].character.charid,result.player_list[1].character.skin),(200001,400101))
+
     def test_failed_server_response_is_not_rewritten(self):
         response = pb.ResLogin()
         response.error.code = 1001

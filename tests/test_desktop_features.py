@@ -106,10 +106,11 @@ class ShutdownTests(unittest.TestCase):
         manager.browser = SimpleNamespace(stop=lambda join: calls.append('browser'))
         manager.mitm_server = SimpleNamespace(stop=lambda: calls.append('mitm'))
         manager.proxy_injector = SimpleNamespace(stop=lambda join: calls.append('injector'))
+        manager.native_tools = SimpleNamespace(stop_unlock=lambda: calls.append('unlock'),stop_capture=lambda: calls.append('native capture'))
         with self.assertLogs(LOGGER, level='ERROR'):
             manager._run()
         self.assertIsInstance(manager.main_thread_exception, RuntimeError)
-        self.assertEqual(calls, ['automation', 'browser', 'mitm', 'injector'])
+        self.assertEqual(calls, ['automation', 'browser', 'mitm', 'injector', 'unlock', 'native capture'])
 
     def test_stop_before_thread_start_is_safe(self):
         manager = BotManager.__new__(BotManager)

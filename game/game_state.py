@@ -78,6 +78,7 @@ class GameState:
         self.last_op_step:int = None            # liqi msg 'step' element
         
         ### Internal Status flags        
+        self.last_error = None
         self.is_bot_calculating:bool = False    # if bot is calculating reaction
         self.is_ms_syncing:bool = False         # if mjai_bot is running syncing from MS (after disconnection)
         self.is_round_started:bool = False
@@ -126,17 +127,24 @@ class GameState:
         returns:
             dict: Mjai message in dict format (i.e. AI's reaction) if any. May be None.
         """
+        previous_calculating = self.is_bot_calculating
         self.is_bot_calculating = True
-        start_time = time.time()
-        reaction = self._input_inner(liqi_msg)
-        time_used = time.time() - start_time
-        if reaction is not None:
-            # Update last_reaction (not none) and set it to pending
-            self.last_reaction = reaction
-            self.last_reaction_pending = True
-            self.last_reaction_time = time_used
-        self.is_bot_calculating = False
-        return reaction
+        start_time = time.monotonic()
+        try:
+            reaction = self._input_inner(liqi_msg)
+            if reaction is not None:
+                self.last_reaction = reaction
+                self.last_reaction_pending = True
+                self.last_reaction_time = time.monotonic() - start_time
+            return reaction
+        except Exception as error:
+            self.last_error = str(error)
+            self.last_reaction_pending = False
+            raise
+        finally:
+            # Sync replay calls input recursively: keep the outer call busy,
+            # and always release the flag after its success or exception.
+            self.is_bot_calculating = previous_calculating
     
     def _input_inner(self, liqi_msg: dict) -> dict | None:        
         liqi_type = liqi_msg['type']
@@ -608,7 +616,11 @@ class GameState:
                 output_reaction = self.mjai_bot.react_batch(self.mjai_pending_input_msgs)
         except Exception as e:
             LOGGER.error("Bot react error: %s", e, exc_info=True)
+            self.last_error = str(e)
+            self.last_reaction_pending = False
             output_reaction = None
+        else:
+            self.last_error = None
         self.mjai_pending_input_msgs = [] # clear intput queue
         
         if output_reaction is None:

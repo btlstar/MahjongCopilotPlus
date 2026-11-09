@@ -11,6 +11,8 @@ import threading
 
 from game.browser import GameBrowser
 from game.game_state import GameState
+from game.riichicity.state import RiichiCityState
+from game.riichicity.tools import NativeTools
 from game.automation import Automation, UiState, JOIN_GAME, END_GAME
 import mitm
 import proxinject
@@ -44,6 +46,11 @@ class BotManager:
         self.proxy_injector = proxinject.ProxyInjector()
         self.browser = GameBrowser(self.st.browser_width, self.st.browser_height)
         self.automation = Automation(self.browser, self.st)
+        self.native_tools = NativeTools()
+        self.rc_flows = {}
+        self.rc_frame_count = 0
+        self.rc_last_command = ''
+        self.connection_setup_error = None
         self.bot:Bot = None
         self.active_model_type = None
 
@@ -133,6 +140,18 @@ class BotManager:
         
     def start_browser(self):
         """ Start the browser thread, open browser window """
+        if self.st.platform=='riichicity':
+            if self.connection_setup_error:
+                raise ValueError(f'一番街连接尚未就绪：{self.connection_setup_error}')
+            if not self.mitm_server.is_running():
+                raise ValueError('一番街本地代理尚未就绪，请查看诊断后重试。')
+            if self.st.riichicity_capture_method=='inject':
+                if not self.st.riichicity_injector_path:
+                    raise ValueError('请先在平台设置中选择代理注入工具。')
+                self.native_tools.start_client(self.st.riichicity_client_path,injector=self.st.riichicity_injector_path,proxy_port=self.st.mitm_port)
+            else:
+                self.native_tools.start_client(self.st.riichicity_client_path)
+            return
         ms_url = self.st.ms_url
         proxy = self.mitm_server.proxy_str
         self.browser.start(ms_url, proxy, self.st.browser_width, self.st.browser_height,
@@ -206,7 +225,7 @@ class BotManager:
         """Keep start/stop in one place; AI rendering remains UI-driven."""
         if self.browser is None:
             return False
-        if not self.st.enable_overlay:
+        if self.st.platform!='majsoul' or not self.st.enable_overlay:
             self.browser.stop_overlay()
             return False
         if self._update_overlay_conditions_met():
@@ -272,18 +291,33 @@ class BotManager:
     def _create_mitm_and_proxinject(self):
         # create mitm and proxinject threads
         # enable proxyinject requires socks5, which disables upstream proxy
-        if self.st.enable_proxinject:
+        if self.st.enable_proxinject and self.st.platform=='majsoul':
             mode = mitm.SOCKS5
             LOGGER.debug("Enabling proxyinject requires socks5, and it disables upstream proxy")
         else:
             mode = mitm.HTTP
 
-        self.mitm_server.start(self.st.mitm_port, mode, self.st.upstream_proxy)
+        self.mitm_server.platform = self.st.platform
+        upstream,ca = self.st.upstream_proxy,None
+        try:
+            if self.st.platform=='riichicity':
+                upstream,ca = self.native_tools.route(self.st)
+            else:
+                self.native_tools.stop_unlock()
+                self.native_tools.stop_capture()
+            if self.game_exception is self.connection_setup_error:
+                self.game_exception = None
+            self.connection_setup_error = None
+        except Exception as error:
+            self.connection_setup_error = self.game_exception = error
+            return
+        self.mitm_server.trusted_upstream_ca = ca
+        self.mitm_server.start(self.st.mitm_port, mode, upstream)
         res = self.mitm_server.install_mitm_cert()
         if not res:
             self.main_thread_exception = utils.MitmCertNotInstalled(self.mitm_server.cert_file)
         
-        if self.st.enable_proxinject:
+        if self.st.enable_proxinject and self.st.platform=='majsoul':
             self.proxy_injector.start(self.st.inject_process_name, "127.0.0.1", self.st.mitm_port)
         
 
@@ -292,7 +326,11 @@ class BotManager:
         try:
             self._create_mitm_and_proxinject()
             if self.st.auto_launch_browser:
-                self.start_browser()
+                try:
+                    self.start_browser()
+                except (ValueError,OSError) as error:
+                    self.game_exception=error
+                    LOGGER.warning('Game startup failed: %s',type(error).__name__)
 
             while self._stop_event.is_set() is False:   # thread main loop
                 # keep processing majsoul game messages forwarded from mitm server
@@ -318,6 +356,8 @@ class BotManager:
                 ('browser', lambda: self.browser.stop(True)),
                 ('MITM', self.mitm_server.stop),
                 ('proxy injector', lambda: self.proxy_injector.stop(True)),
+                ('RiichiCityUnlock', self.native_tools.stop_unlock),
+                ('native capture', self.native_tools.stop_capture),
             ):
                 try:
                     LOGGER.info('Shutting down %s', label)
@@ -336,7 +376,9 @@ class BotManager:
             
         # update mitm if needed: when no one is using mitm
         if self.mitm_proxinject_need_update:
-            if not (self.browser.is_running()):
+            native=self.native_tools.client_process
+            native_running=native is not None and native.poll() is None
+            if not self.browser.is_running() and not self.is_in_game() and not native_running:
                 LOGGER.debug("Updating mitm and proxy injector")
                 self.proxy_injector.stop(True)
                 self.mitm_server.stop()
@@ -348,13 +390,15 @@ class BotManager:
         # things to do in every loop after processing msg
         # check mitm
         if self.mitm_server.is_running() is False:
-            self.game_exception = utils.MITMException("MITM server stopped")
+            self.game_exception = self.connection_setup_error or utils.MITMException("MITM server stopped")
         else:   # clear exception
             if isinstance(self.game_exception, utils.MITMException):
                 self.game_exception = None
                 
         self.sync_overlay_visibility()
         
+        if self.st.platform=='riichicity':
+            return # native AI is observe-only; never drive Mahjong Soul mouse actions
         self.automation.automate_retry_pending(self.game_state)            # retry failed automation
         
         if not self.game_exception:     # skip on game error
@@ -364,6 +408,10 @@ class BotManager:
     def _process_msg(self, msg:mitm.WSMessage):
         """ process websocket message from mitm server"""
         
+        if self.st.platform=='riichicity':
+            self._process_rc_msg(msg)
+            return
+
         if msg.type == mitm.WsType.START:
             LOGGER.debug("Websocket Flow started: %s", msg.flow_id)
             
@@ -438,6 +486,51 @@ class BotManager:
             else:
                 LOGGER.debug('Other msg (ignored): %s', liqimsg)
                 
+    def _process_rc_msg(self,msg):
+        if msg.type==mitm.WsType.END:
+            if msg.flow_id==self.lobby_flow_id:
+                self.lobby_flow_id=None
+            if msg.flow_id==self.game_flow_id:
+                self._process_end_game()
+                self.game_flow_id=None
+            self.rc_flows.pop(msg.flow_id,None)
+            return
+        if msg.type!=mitm.WsType.MESSAGE:
+            return
+        data=msg.content
+        if not isinstance(data,bytes) or len(data)<15 or data[4:8]!=b'\x00\x0f\x00\x01':
+            return
+        if self.game_flow_id not in (None,msg.flow_id):
+            return
+        state=self.rc_flows.get(msg.flow_id)
+        if state is None:
+            if len(self.rc_flows)>=32:
+                LOGGER.warning('Too many Riichi City flows; waiting for closed connections')
+                return
+            state=self.rc_flows[msg.flow_id]=RiichiCityState(self.bot)
+        if not state.bridge.started:
+            state.mjai_bot=self.bot
+        self.rc_frame_count+=1
+        state.input(data,getattr(msg,'from_client',None))
+        if state.bridge.uid is not None and not state.desynced:
+            self.lobby_flow_id=msg.flow_id
+        command=state.bridge.last_command
+        self.rc_last_command=command if command in ('cmd_enter_room','cmd_game_start','cmd_send_current_action',
+            'cmd_send_other_action','cmd_game_action_brc','cmd_in_card_brc','cmd_gang_bao_brc','cmd_game_end','cmd_room_end') else '其他通知'
+
+        if state.last_error and not state.is_round_started:
+            self.game_exception=ValueError(state.last_error)
+        if state.is_game_ended:
+            if msg.flow_id==self.game_flow_id:
+                self._process_end_game()
+                self.game_flow_id=None
+        elif state.is_round_started:
+            if self.game_flow_id not in (None,msg.flow_id):
+                return
+            self.game_flow_id=msg.flow_id
+            self.game_state=state
+            self.game_exception=None
+
     def _process_idle_automation(self, liqimsg:dict):
         """ do some idle action based on liqi msg"""
         liqi_method = liqimsg['method']
@@ -456,7 +549,8 @@ class BotManager:
         if self.browser:    # fix for corner case
             self.browser.overlay_clear_guidance()
         self.game_exception = None
-        self.automation.on_end_game()
+        if self.st.platform=='majsoul':
+            self.automation.on_end_game()
             
     
     def _update_overlay_conditions_met(self) -> bool:
@@ -606,6 +700,11 @@ def mjai_reaction_2_guide(reaction:dict, max_options:int=3, lan_str:LanStr=LanSt
                     name_str = lan_str.mjai2str(code) + MJAI_TILE_2_UNICODE['N']
                 else:
                     name_str = lan_str.mjai2str(code)                
+                # Riichi and its follow-up discard are one displayed action.
+                # Its policy belongs to `reach`, not the same-tile dama discard
+                # or the conditional discard policy from the second inference.
+                if re_type == MjaiType.REACH and code == MjaiType.REACH:
+                    name_str = action_str
                 options.append((name_str, q))
         
     return (action_str, options)

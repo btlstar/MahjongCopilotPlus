@@ -110,18 +110,24 @@ RENDER_GUIDE = r"""({id, ownerId, line, options, left, top, width, height, rows}
     state.geometry = {left, top, width, height};
     state.content.replaceChildren();
 
-    // Show the chosen action's probability only when its label matches.
-    // This also works when randomized play chooses something below rank one.
-    const matching = options.map((item, index) => line.endsWith(item[0]) ? index : -1)
-                            .filter(index => index >= 0);
+    // Rich rows carry the matched action. For legacy callers, never infer a
+    // compound action's probability from its trailing discard tile.
+    let matching = options.map((item, index) => line === item[0] ? index : -1)
+                          .filter(index => index >= 0);
+    if (!matching.length) {
+        matching = options.map((item, index) =>
+            ['切', 'Discard'].some(prefix => line === prefix + item[0]) ? index : -1)
+            .filter(index => index >= 0);
+    }
     const selected = matching.length === 1 ? matching[0] : -1;
-    const makeRow = (label, weight, primary, tokens) => {
+    const makeRow = (label, weight, primary, tokens, emphasis, leading) => {
         const row = document.createElement('div');
         row.dataset.guideRow = primary ? 'primary' : 'alternative';
+        row.dataset.guideEmphasis = String(emphasis);
         Object.assign(row.style, {
             display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto',
             columnGap: `${font * 0.65}px`, alignItems: 'center',
-            padding: primary ? '0' : `${font * 0.12}px 0`
+            minHeight: `${font * 2.55}px`, padding: '0'
         });
         const text = document.createElement('span');
         text.dataset.guideLabel = '';
@@ -133,7 +139,7 @@ RENDER_GUIDE = r"""({id, ownerId, line, options, left, top, width, height, rows}
                 if (token.tile) {
                     const tile = token.tile;
                     element.dataset.guideTile = tile.code;
-                    const height = font*(primary?2.4:2.05);
+                    const height = font*2.25;
                     Object.assign(element.style,{position:'relative',display:'inline-flex',flexDirection:'column',
                         alignItems:'center',justifyContent:'center',flexShrink:'0',
                         width:`${height*.75}px`,height:`${height}px`,borderRadius:'4px',
@@ -156,28 +162,30 @@ RENDER_GUIDE = r"""({id, ownerId, line, options, left, top, width, height, rows}
             });
         } else text.textContent = label;
         Object.assign(text.style, {minWidth: '0', overflowWrap: 'anywhere',
-            fontSize: `${font * (primary ? 1.18 : 0.94)}px`,
-            fontWeight: primary ? '500' : '400', color: primary ? '#eef0f3' : '#c7ccd3'});
+            fontSize: `${font * 1.05}px`,
+            fontWeight: emphasis ? '500' : '400', color: emphasis ? '#eef0f3' : '#c7ccd3'});
         const probability = document.createElement('span');
         probability.dataset.guideProbability = '';
-        probability.textContent = weight == null ? '' : `${Math.round(weight * 100)}%`;
+        probability.textContent = !Number.isFinite(weight) || weight<0 || weight>1 ? '' : `${Math.round(weight * 100)}%`;
         Object.assign(probability.style, {textAlign: 'right', whiteSpace: 'nowrap',
             fontVariantNumeric: 'tabular-nums', fontFamily: '"Segoe UI", sans-serif',
-            fontSize: `${font * (primary ? 1.05 : 0.94)}px`,
-            fontWeight: primary ? '500' : '400', color: primary ? '#eef0f3' : '#959ba5'});
+            fontSize: `${font * 1.05}px`,
+            fontWeight: emphasis ? '500' : '400',
+            color: leading ? '#ead59d' : emphasis ? '#eef0f3' : '#959ba5'});
         row.append(text, probability);
         state.content.appendChild(row);
     };
     const displayRows = rows || [{label:line,weight:selected<0?null:options[selected][1],primary:true},
         ...options.filter((_,index)=>index!==selected).map(([label,weight])=>({label,weight,primary:false}))];
     displayRows.forEach((row,index) => {
-      if (index === 1) {
+      if (row.divider_before ?? index === 1) {
         const divider = document.createElement('div');
+        divider.dataset.guideDivider = '';
         Object.assign(divider.style, {height: '1px', margin: `${font * 0.3}px 0`,
             background: 'rgba(225,235,250,0.12)'});
         state.content.appendChild(divider);
       }
-      makeRow(row.label,row.weight,row.primary,row.tokens);
+      makeRow(row.label,row.weight,row.primary,row.tokens,row.emphasis ?? row.primary,row.leading ?? false);
     });
     state.place();
 }"""

@@ -86,14 +86,14 @@ class SettingsPage(QWidget):
         tabs = horizontal(spacing=22)
         self.tab_buttons = []
         self.pages = QStackedWidget()
-        for i, text in enumerate(('显示','AI 连接','平台','高级')):
+        for i, text in enumerate(('显示','AI 连接','连接','自动操作','平台')):
             item = button(text, lambda checked=False,index=i:self.select_tab(index), 'Tab', True)
             tabs.addWidget(item)
             self.tab_buttons.append(item)
         tabs.addStretch()
         self.layout_main.addLayout(tabs)
         self.layout_main.addWidget(self.pages,1)
-        for builder in (self._display, self._ai, self._platforms, self._advanced):
+        for builder in (self._display, self._ai, self._connection, self._automation, self._platforms):
             page = QWidget()
             page.setObjectName('Page')
             body = column(page, 0, 12)
@@ -104,12 +104,21 @@ class SettingsPage(QWidget):
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             scroll.setWidget(page)
             self.pages.addWidget(scroll)
+        self.automation_actions = QWidget()
+        actions = horizontal(self.automation_actions,spacing=12)
+        self.auto_result = label('',wrap=True)
+        actions.addWidget(self.auto_result,1)
+        actions.addStretch()
+        self.save_automation_button = button('保存自动操作',self.save_automation,'Primary')
+        actions.addWidget(self.save_automation_button)
+        self.layout_main.addWidget(self.automation_actions)
         self.select_tab(0)
 
     def select_tab(self, index):
         if index!=1:
             self._conceal_secrets()
         self.pages.setCurrentIndex(index)
+        self.automation_actions.setVisible(index==3)
         for i, item in enumerate(self.tab_buttons):
             item.setChecked(i == index)
 
@@ -173,7 +182,7 @@ class SettingsPage(QWidget):
         self._switch(card.body,'show_game_status_overlay','游戏内状态角标','默认隐藏，避免遮挡画面。')
         body.addWidget(card)
         card = Card()
-        self._switch(card.body,'boss_key_enabled','老板键','隐藏或恢复主界面和游戏浏览器。')
+        self._switch(card.body,'boss_key_enabled','老板键','隐藏或恢复主界面及本程序启动的游戏窗口。')
         presets = [('Alt+Q（推荐）','Alt+Q'),('Alt+Z','Alt+Z'),('Alt+X','Alt+X'),('自定义','custom')]
         preset = self._combo('boss_preset',presets,self.st.boss_key if self.st.boss_key in ('Alt+Q','Alt+Z','Alt+X') else 'custom')
         card.body.addWidget(setting_row('快捷键预设','两个按键，左手即可操作。',preset))
@@ -457,38 +466,122 @@ class SettingsPage(QWidget):
 
     def _platforms(self,body):
         card = Card()
+        self.platform_overview=card
         for title,detail,status in (
             ('雀魂','对局分析 · MajsoulMax 装扮扩展','已接入'),
-            ('一番街','对局适配 · RiichiCityUnlock 接入规划','规划中'),
+            ('一番街','原生客户端 · AI 分析与外部 RiichiCityUnlock','实验性接入'),
             ('天凤','对局适配规划','规划中'),
             ('天月麻将 / 掌心麻将','平台与装扮扩展接入规划','规划中')):
             card.body.addWidget(setting_row(title,detail,label(status,'Success' if status=='已接入' else 'Muted')))
         body.addWidget(card)
+        native=Card('一番街客户端','实验性接入 · 建议显示在主界面')
+        self.native_card=native
+        self.native_path_rows={}
+        from game.riichicity.tools import NativeTools
+        self._field(native.body,'捕获方式',self._combo('riichicity_capture_method',[('进程代理注入（需本地 proxinject）','inject'),('手动进程分流','manual')],self.st.riichicity_capture_method))
+        for key,title,filter_ in (('riichicity_injector_path','proxinjector-cli.exe（自动捕获）','Windows 程序 (*.exe)'),
+                                  ('riichicity_client_path','游戏本体 exe','Windows 程序 (*.exe)'),
+                                  ('riichicity_unlock_path','RiichiCityUnlock.exe','Windows 程序 (*.exe)'),
+                                  ('riichicity_unlock_ca','解锁工具 CA（可选）','证书 (*.pem *.cer)')):
+            row=QWidget()
+            fields=horizontal(row,spacing=8)
+            entry=self._entry(key)
+            if key=='riichicity_client_path' and not entry.text():
+                entry.setText(NativeTools.find_client())
+            entry.setPlaceholderText('留空自动使用当前用户 .mitmproxy 的 CA' if key.endswith('_ca') else '')
+            fields.addWidget(entry,1)
+            def browse(checked=False,control=entry,title=title,filter_=filter_):
+                path,_=QFileDialog.getOpenFileName(self,title,control.text(),filter_)
+                if path: control.setText(path)
+            fields.addWidget(button('浏览…',browse))
+            group=QWidget()
+            group_body=column(group,0,6)
+            self._field(group_body,title,row)
+            native.body.addWidget(group)
+            self.native_path_rows[key]=group
+        port=QSpinBox()
+        port.setRange(1000,65535)
+        port.setValue(self.st.mitm_port)
+        self.fields['riichicity_local_port']=port
+        native.body.addWidget(setting_row('Copilot 本地 HTTP 端口','与雀魂共用；客户端应连接此端口。',port))
+        unlock=self._switch(native.body,'riichicity_unlock_enabled','同时启用 RiichiCityUnlock','启动本地外部工具；其配置和免费／捐赠模式保持原样。')
+        unlock.toggled.connect(self.sync_native_fields)
+        self.fields['riichicity_capture_method'].currentIndexChanged.connect(self.sync_native_fields)
+        self.native_upstream_row=QWidget()
+        upstream_body=column(self.native_upstream_row,0,6)
+        self._field(upstream_body,'一番街上游代理（可选）',self._entry('riichicity_upstream_proxy'))
+        native.body.addWidget(self.native_upstream_row)
+        native.body.addWidget(label('自动捕获仅作用于本程序启动的游戏及其子进程；本机回环连接直连。手动方式可将 Mahjong-JP.exe 的连接通过 Proxifier 等工具指向 127.0.0.1 的 Copilot 端口，代理类型选 HTTPS（HTTP CONNECT）。localhost、127.0.0.1、::1 设为直连。启用解锁时由本地 41110 代理出站。',wrap=True))
+        native.body.addWidget(label('当前支持主界面 AI 分析；原生游戏内提示、自动打牌及中途重连恢复尚未接入。',wrap=True))
+        self.native_result=self._result(native.body)
+        native.body.addWidget(button('保存一番街配置',self.save_native,'Primary'),0,Qt.AlignRight)
+        body.addWidget(native)
+        self.sync_native_fields()
 
-    def _advanced(self,body):
-        card = Card()
+    def sync_native_fields(self):
+        auto=self.fields['riichicity_capture_method'].currentData()=='inject'
+        unlock=self.fields['riichicity_unlock_enabled'].isChecked()
+        self.native_path_rows['riichicity_injector_path'].setVisible(auto)
+        self.native_path_rows['riichicity_unlock_path'].setVisible(unlock)
+        self.native_path_rows['riichicity_unlock_ca'].setVisible(unlock)
+        self.native_upstream_row.setVisible(not unlock)
+
+    def save_native(self):
+        from game.riichicity.tools import NativeTools
+        try:
+            values={key:self.fields[key].text().strip() for key in ('riichicity_client_path','riichicity_unlock_path','riichicity_unlock_ca','riichicity_upstream_proxy','riichicity_injector_path')}
+            values['riichicity_capture_method']=self.fields['riichicity_capture_method'].currentData()
+            if values['riichicity_capture_method']=='inject':
+                helper=NativeTools.executable(values['riichicity_injector_path'])
+                if not (helper.parent/'proxinjectee.dll').is_file(): raise ValueError('代理注入工具目录缺少 proxinjectee.dll。')
+            values['riichicity_unlock_enabled']=self.fields['riichicity_unlock_enabled'].isChecked()
+            values['mitm_port']=self.fields['riichicity_local_port'].value()
+            if values['riichicity_client_path']: NativeTools.executable(values['riichicity_client_path'])
+            if values['riichicity_unlock_enabled']:
+                NativeTools.executable(values['riichicity_unlock_path'])
+                if values['mitm_port']==41110: raise ValueError('Copilot 端口不能与解锁工具的 41110 相同。')
+            if values['riichicity_unlock_ca'] and not Path(values['riichicity_unlock_ca']).is_file():
+                raise ValueError('所选 CA 证书文件不存在。')
+            if values['riichicity_upstream_proxy'] and not valid_url(values['riichicity_upstream_proxy']):
+                raise ValueError('一番街上游代理地址格式无效。')
+            self.owner.save_settings(values)
+            self.owner.wardrobe.sync_platform()
+            self.feedback(self.native_result,'已保存；关闭当前游戏客户端后更新连接，捕获方式在下次启动游戏时生效。' if self.owner.bot_manager.is_in_game() else '已保存；捕获方式在下次启动游戏时生效。')
+        except (ValueError,OSError) as error:
+            self.feedback(self.native_result,str(error),True)
+
+    def sync_platform(self):
+        native=self.st.platform=='riichicity'
+        self.tab_buttons[3].setVisible(not native)
+        self.platform_overview.setVisible(not native)
+        self.native_card.setVisible(native)
+        for key in ('enable_overlay','show_game_status_overlay'):
+            self.fields[key].setEnabled(not native)
+            self.fields[key].setToolTip('原生一番街暂仅在主界面显示建议。' if native else '')
+        if native and self.pages.currentIndex()==3:
+            self.select_tab(0)
+
+    def _connection(self,body):
+        card = Card('连接设置')
+        card.body.addWidget(setting_row('连接与代理','Copilot 本地端口、游戏上游代理与浏览器配置。',
+                                       button('打开连接配置',self.owner.show_connection)))
+        body.addWidget(card)
+        card = Card('诊断与日志')
+        card.body.addWidget(setting_row('运行诊断','查看 AI 错误、模型回报、游戏转发路径与连接状态。',
+                                       button('查看诊断',self.owner.show_diagnostics)))
+        body.addWidget(card)
+
+    def _automation(self,body):
+        card = Card('自动操作','默认关闭')
         self._switch(card.body,'enable_automation','自动打牌','按 AI 建议执行操作。')
         self._switch(card.body,'auto_join_game','自动加入','按下方房间与模式进入游戏。')
         room = self._combo('auto_join_level',[(name,i) for i,name in enumerate(self.st.lan().GAME_LEVELS)],self.st.auto_join_level)
         card.body.addWidget(setting_row('自动加入房间','',room))
         modes = self._combo('auto_join_mode',list(zip(self.st.lan().GAME_MODES,GAME_MODES)),self.st.auto_join_mode)
         card.body.addWidget(setting_row('对局模式','',modes))
-        actions = horizontal()
-        actions.addWidget(button('定时停止自动加入',self.owner.show_timer))
-        actions.addStretch()
-        actions.addWidget(button('保存自动操作',self.save_automation,'Primary'))
-        card.body.addLayout(actions)
-        self.auto_result = self._result(card.body)
+        card.body.addWidget(button('定时停止自动加入',self.owner.show_timer),0,Qt.AlignLeft)
         body.addWidget(card)
-        card = Card()
-        card.body.addWidget(setting_row('连接与代理','端口、上游代理与浏览器配置。',button('配置 ›',self.owner.show_connection)))
-        card.body.addWidget(setting_row('诊断与日志','运行状态、错误详情与日志。',button('查看 ›',self.owner.show_diagnostics)))
-        body.addWidget(card)
-        extra = button('展开自动操作细节',name='Quiet',checkable=True)
-        body.addWidget(extra,0,Qt.AlignLeft)
-        details = Card()
-        details.setVisible(False)
-        extra.toggled.connect(details.setVisible)
+        details = Card('操作细节','鼠标行为与执行节奏')
         for key,title in (('auto_idle_move','空闲时移动鼠标'),('auto_random_move','随机鼠标移动'),('auto_dahai_drag','拖动出牌')):
             self._switch(details.body,key,title)
         for key,title,minimum,maximum in (('delay_random_lower','操作延时下限（秒）',0,60),('delay_random_upper','操作延时上限（秒）',0,60),('ai_randomize_choice','随机候选范围',0,5),('auto_reply_emoji_rate','表情回复概率',0,1)):
@@ -497,10 +590,12 @@ class SettingsPage(QWidget):
             control.setValue(getattr(self.st,key))
             self.fields[key] = control
             details.body.addWidget(setting_row(title,'',control))
-        details.body.addWidget(button('保存自动操作细节',self.save_automation))
         body.addWidget(details)
 
     def save_automation(self):
+        if self.st.platform!='majsoul':
+            self.feedback(self.auto_result,'一番街当前仅支持 AI 分析。',True)
+            return
         keys = ('enable_automation','auto_join_game','auto_join_level','auto_join_mode',
                 'auto_idle_move','auto_random_move','auto_dahai_drag','delay_random_lower',
                 'delay_random_upper','ai_randomize_choice','auto_reply_emoji_rate')

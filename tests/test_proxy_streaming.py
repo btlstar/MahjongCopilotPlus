@@ -47,7 +47,17 @@ async def serve_proxy(port,confdir):
                         with_termlog=False,with_dumper=False)
     master.options.update(stream_large_bodies='256k')
     master.addons.add(WSDataInterceptor())
-    await master.run()
+    async def stop_when_requested():
+        while True:
+            await asyncio.sleep(.05)
+            if (Path(confdir)/'stop-requested').exists():
+                master.shutdown()
+                return
+    stop_task = asyncio.create_task(stop_when_requested())
+    try:
+        await master.run()
+    finally:
+        stop_task.cancel()
 
 
 class ProxyStreamingTests(unittest.TestCase):
@@ -60,7 +70,7 @@ class ProxyStreamingTests(unittest.TestCase):
                 process = subprocess.Popen([sys.executable,str(Path(__file__).resolve()),
                     '--proxy',str(port),directory],cwd=ROOT,stdout=output,stderr=output)
                 try:
-                    deadline = time.monotonic()+10
+                    deadline = time.monotonic()+30
                     while True:
                         self.assertIsNone(process.poll(),'Offline proxy failed to start')
                         try:
@@ -90,9 +100,11 @@ class ProxyStreamingTests(unittest.TestCase):
                                 server.shutdown()
                                 worker.join(timeout=2)
                 finally:
-                    process.terminate()
+                    # Let both the Windows venv launcher and its interpreter
+                    # exit normally before TemporaryDirectory removes the log.
+                    (Path(directory)/'stop-requested').touch()
                     try:
-                        process.wait(timeout=5)
+                        process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait(timeout=5)

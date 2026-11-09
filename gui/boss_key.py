@@ -168,7 +168,7 @@ class OwnedBrowserWindows:
             if pid.value in owned:
                 name = ctypes.create_unicode_buffer(128)
                 self.user.GetClassNameW(hwnd, name, len(name))
-                if name.value == 'Chrome_WidgetWin_1':
+                if name.value in ('Chrome_WidgetWin_1','UnityWndClass'):
                     windows.append((hwnd, pid.value))
             return True
         self.user.EnumWindows(visit, 0)

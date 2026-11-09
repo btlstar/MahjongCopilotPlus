@@ -50,6 +50,16 @@ class Settings:
         for key in ('show_floating_panel','floating_opacity','floating_topmost','floating_geometry'):
             self._settings_dict.pop(key,None)
         
+        # Per-platform paths are private settings, never public defaults.
+        self.platform = self._get_value('platform','majsoul',lambda v:v in ('majsoul','riichicity'))
+        self.riichicity_client_path = self._get_value('riichicity_client_path','',lambda v:isinstance(v,str))
+        self.riichicity_capture_method = self._get_value('riichicity_capture_method','manual',lambda v:v in ('manual','inject'))
+        self.riichicity_injector_path = self._get_value('riichicity_injector_path','',lambda v:isinstance(v,str))
+        self.riichicity_unlock_enabled = self._get_value('riichicity_unlock_enabled',False,self.valid_bool)
+        self.riichicity_unlock_path = self._get_value('riichicity_unlock_path','',lambda v:isinstance(v,str))
+        self.riichicity_unlock_ca = self._get_value('riichicity_unlock_ca','',lambda v:isinstance(v,str))
+        self.riichicity_upstream_proxy = self._get_value('riichicity_upstream_proxy','',lambda v:isinstance(v,str))
+
         # AI Model settings
         self.model_type:str = self._get_value("model_type", "Local")
         """ model type: local, mjapi"""

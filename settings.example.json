@@ -28,5 +28,13 @@
     "upstream_proxy": "",
     "enable_proxinject": false,
     "language": "ZHS",
-    "desktop_ui_version": 3
+    "desktop_ui_version": 3,
+    "platform": "majsoul",
+    "riichicity_client_path": "",
+    "riichicity_unlock_enabled": false,
+    "riichicity_unlock_path": "",
+    "riichicity_unlock_ca": "",
+    "riichicity_upstream_proxy": "",
+    "riichicity_capture_method": "manual",
+    "riichicity_injector_path": ""
 }

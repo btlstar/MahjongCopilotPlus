@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from bot_manager import BotManager
 from gui.preferences import test_ai_connection
-from gui.ai_feedback import runtime_models_text
+from gui.ai_feedback import runtime_models_text,inference_footer_text,model_check_history_text
 
 
 def values():
@@ -54,6 +54,22 @@ class FeedbackTests(unittest.TestCase):
         text = runtime_models_text(SimpleNamespace(bot=bot,is_loading_bot=False,bot_need_update=False))
         self.assertIn('未配置',text)
         self.assertIn('尚无模型 ID',text)
+
+    def test_footer_distinguishes_verified_response_and_model_failure(self):
+        record={'sequence':1,'time':'2026-11-05T12:00:00+08:00','phase':'decision',
+                'requested':'4p-active','served':'4p-active','status':'confirmed','elapsed_ms':210}
+        bot=SimpleNamespace(protocol='v3',models={'4p':'4p-active','3p':'3p-active'},
+            mode=SimpleNamespace(value='4P'),last_model_check=record,model_checks=(record,),
+            verified_total=1,failed_total=0,model_confirmed=True,last_served_model='4p-active')
+        manager=SimpleNamespace(bot=bot,is_loading_bot=False,bot_need_update=False)
+        self.assertIn('已核验',inference_footer_text(bot))
+        self.assertIn('通过 1 次',runtime_models_text(manager))
+        self.assertIn('4p-active → 4p-active',model_check_history_text(bot))
+        bot.last_model_check=dict(record,served='4p-other',status='mismatch')
+        bot.failed_total=1
+        bot.model_confirmed=False
+        self.assertIn('模型不符',inference_footer_text(bot))
+        self.assertIn('未采用建议',runtime_models_text(manager))
 
     def test_loading_completion_and_failure_are_published(self):
         manager = BotManager.__new__(BotManager)

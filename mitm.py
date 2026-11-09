@@ -62,6 +62,7 @@ class WSMessage:
     timestamp:float = None
     content:bytes = None
     type:int = WsType.MESSAGE
+    from_client:bool = None
 
 class WSDataInterceptor:
     """ mitm websocket addon that intercepts data"""
@@ -105,7 +106,7 @@ class WSDataInterceptor:
         """ ws message handler"""
         msg = flow.websocket.messages[-1]
         if self.allow_url(flow.request.pretty_url):
-            self.message_queue.put(WSMessage(flow.id, msg.timestamp, msg.content))
+            self.message_queue.put(WSMessage(flow.id, msg.timestamp, msg.content, from_client=getattr(msg,'from_client',None)))
         
     def websocket_end(self, flow:HTTPFlow):
         """ ws flow end handler"""
@@ -184,6 +185,8 @@ class MitmController:
         self.proxy_port = None
         self.mode = None
         self.upstream_proxy = None
+        self.platform = 'majsoul'
+        self.trusted_upstream_ca = None
         self.proxy_str:str = None
         
         self.ws_data_addon = WSDataInterceptor(allowed_domains)
@@ -242,6 +245,8 @@ class MitmController:
         else:
             raise ValueError(f"Unsupported mitm mode: {self.mode}")
             
+        if self.trusted_upstream_ca:
+            opts.update(ssl_verify_upstream_trusted_ca=self.trusted_upstream_ca)
         self.dump_master = DumpMaster(
             opts,
             with_termlog=False,
@@ -252,7 +257,9 @@ class MitmController:
         try:
             LOGGER.info("Starting mitm server%s, proxy=%s", up_log_str, self.proxy_str)
             # Copilot consumes original game frames before cosmetic rewriting.
-            self.dump_master.addons.add(self.ws_data_addon, ModAddon())
+            self.dump_master.addons.add(self.ws_data_addon)
+            if self.platform=='majsoul':
+                self.dump_master.addons.add(ModAddon())
             await self.dump_master.run()
         except Exception as e:
             LOGGER.error("Exception in starting MITM server: %s", e, exc_info=True)

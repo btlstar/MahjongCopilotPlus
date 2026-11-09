@@ -123,6 +123,114 @@ class AkagiV3Tests(unittest.TestCase):
         self.assertEqual(len(self.post_calls()),2)
         self.assertEqual(sum(event['type']=='reach' for event in bot.events),1)
 
+    def test_model_checks_cover_all_calls_and_riichi_followup(self):
+        bot=self.bot()
+        self.server.replies=[{'model':MODEL_4P,'reaction':{'type':'reach','actor':0}},
+                             {'model':MODEL_4P,'reaction':{'type':'dahai','actor':0,'pai':'2m'}}]
+        bot.react({'type':'tsumo','actor':0,'pai':'2m'})
+        self.assertEqual([r['phase'] for r in bot.model_checks],['decision','reach_discard'])
+        self.assertEqual(bot.verified_total,2)
+        self.assertEqual(bot.failed_total,0)
+        self.assertTrue(all(r['requested']==r['served']==MODEL_4P for r in bot.model_checks))
+        self.server.replies=[{'model':'4p-other','reaction':{'type':'dahai','actor':0,'pai':'1m'}}]
+        with self.assertRaises(ValueError): bot.react({'type':'tsumo','actor':0,'pai':'3m'})
+        self.assertEqual((bot.verified_total,bot.failed_total),(2,1))
+        self.assertEqual(bot.last_model_check['status'],'mismatch')
+        self.assertFalse(bot.model_confirmed)
+
+    def test_riichi_followup_missing_model_rejects_the_whole_advice(self):
+        bot=self.bot()
+        self.server.replies=[{'model':MODEL_4P,'reaction':{'type':'reach','actor':0}},
+                             {'reaction':{'type':'dahai','actor':0,'pai':'2m'}}]
+        with self.assertRaisesRegex(ValueError,'未回报'):
+            bot.react({'type':'tsumo','actor':0,'pai':'2m'})
+        self.assertFalse(bot.model_confirmed)
+        self.assertEqual(bot.last_model_check['phase'],'reach_discard')
+        self.assertEqual(bot.last_model_check['status'],'missing_model')
+
+    def test_audit_is_bounded_and_does_not_log_credentials_or_events(self):
+        bot=self.bot()
+        reply={'model':MODEL_4P,'reaction':{'type':'dahai','actor':0,'pai':'1m'}}
+        with patch.object(bot.client,'react',return_value=reply),self.assertLogs(LOGGER,level='INFO') as logs:
+            for _ in range(35): bot.react({'type':'tsumo','actor':0,'pai':'2m'})
+        self.assertEqual(len(bot.model_checks),30)
+        self.assertEqual(bot.verified_total,35)
+        text='\n'.join(logs.output)
+        self.assertNotIn('offline-key',text)
+        self.assertNotIn('events',text)
+        self.assertNotIn('pai',text)
+        self.assertIn('requested='+MODEL_4P,text)
+        self.assertIn('served='+MODEL_4P,text)
+        self.assertEqual(bot.model_checks[0]['sequence'],6)
+
+    def test_invalid_model_metadata_is_redacted_and_never_adopted(self):
+        bot=self.bot()
+        for value in ('offline-key','<html>error</html>','4p-bad\nheader'):
+            self.server.replies=[{'model':value,'reaction':{'type':'none'}}]
+            with self.assertLogs(LOGGER,level='INFO') as logs:
+                with self.assertRaisesRegex(ValueError,'无效') as error:
+                    bot.react({'type':'tsumo','actor':0,'pai':'2m'})
+            self.assertNotIn(value,str(error.exception)+'\n'.join(logs.output))
+            self.assertEqual(bot.last_model_check['status'],'invalid_model')
+            self.assertIsNone(bot.last_model_check['served'])
+
+    def test_friend_room_dealer_first_decision_each_round_and_after_failure(self):
+        from game.game_state import GameState
+        from liqi import MsgType,LiqiMethod,LiqiAction
+        bot=self.bot()
+        state=GameState(bot)
+        state.account_id=123
+        state.ms_auth_game({'seatList':[123,2,3,4],'gameConfig':{'meta':{'modeId':0}}})
+        def new_round(honba):
+            return {'type':MsgType.NOTIFY,'method':LiqiMethod.ActionPrototype,'data':{
+                'name':LiqiAction.NewRound,'step':0,'data':{'chang':0,'ju':0,'ben':honba,
+                'liqibang':0,'scores':[25000]*4,'doras':['1s'],
+                'tiles':['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','1s','2s'],
+                'operation':{'seat':0,'operationList':[{'type':1}]}}}}
+        for honba in (0,1):
+            reaction=state.input(new_round(honba))
+            self.assertEqual(reaction['type'],'dahai')
+            self.assertFalse(state.is_bot_calculating)
+            events=self.post_calls()[-1][3]['events']
+            self.assertEqual([e['type'] for e in events],['start_game','start_kyoku','tsumo'])
+            self.assertEqual(events[1]['honba'],honba)
+            self.assertEqual(self.post_calls()[-1][3]['model'],MODEL_4P)
+        self.server.replies=[{'reaction':{'type':'dahai','actor':0,'pai':'1m'}}]
+        with patch.object(LOGGER,'error'):
+            self.assertIsNone(state.input(new_round(2)))
+        self.assertFalse(state.is_bot_calculating)
+        self.assertIn('未回报',state.last_error)
+        self.assertIsNone(state.get_pending_reaction())
+        self.assertEqual(state.input(new_round(3))['type'],'dahai')
+        self.assertIsNone(state.last_error)
+        self.assertEqual({entry[3]['model'] for entry in self.post_calls()},{MODEL_4P})
+
+    def test_restart_uses_saved_models_and_running_client_ignores_draft_changes(self):
+        from bot.factory import get_bot
+        with tempfile.TemporaryDirectory() as directory,patch.object(LOGGER,'warning'):
+            path=Path(directory)/'settings.json'
+            settings=Settings(str(path))
+            settings.model_type='AkagiOT'
+            settings.akagi_ot_protocol='v3'
+            settings.akagi_v3_url=self.url
+            settings.akagi_v3_apikey='offline-key'
+            settings.akagi_v3_model_4p=MODEL_4P
+            settings.akagi_v3_model_3p=MODEL_3P
+            settings.save_json()
+            bot=get_bot(settings)
+            self.addCleanup(bot.client.session.close)
+            settings.akagi_v3_model_4p='4p-unsaved-draft'
+            self.assertEqual(bot.models,{'4p':MODEL_4P,'3p':MODEL_3P})
+            restarted=get_bot(Settings(str(path)))
+            self.addCleanup(restarted.client.session.close)
+            self.assertEqual(restarted.models,bot.models)
+            restarted.init_bot(0,GameMode.MJ4P)
+            restarted.react({'type':'start_game','id':0})
+            self.round(restarted,4)
+            restarted.react({'type':'tsumo','actor':0,'pai':'2m'})
+            self.assertEqual(self.post_calls()[-1][3]['model'],MODEL_4P)
+            self.assertEqual(restarted.last_served_model,MODEL_4P)
+
     def test_unavailable_model_does_not_fall_back_or_infer(self):
         with self.assertRaisesRegex(ValueError,'未改用其他模型'):
             BotAkagiV3(self.url,'offline-key',model_4p='4p-unknown')
@@ -163,11 +271,14 @@ class AkagiV3Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'其他座位'):
             bot.react({'type':'tsumo','actor':0,'pai':'N'})
 
-    def test_missing_model_report_does_not_claim_confirmation(self):
+    def test_missing_model_report_is_rejected_without_confirmation(self):
         bot = self.bot()
         self.server.replies = [{'reaction':{'type':'dahai','actor':0,'pai':'1m'}}]
-        bot.react({'type':'tsumo','actor':0,'pai':'2m'})
+        with self.assertRaisesRegex(ValueError,'未回报'):
+            bot.react({'type':'tsumo','actor':0,'pai':'2m'})
         self.assertFalse(bot.model_confirmed)
+        self.assertEqual(bot.last_model_check['status'],'missing_model')
+        self.assertEqual(bot.failed_total,1)
         self.assertIn('尚无推理确认',bot.info_str)
 
     def test_no_legal_action_can_still_confirm_served_model(self):

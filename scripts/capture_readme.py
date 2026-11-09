@@ -48,7 +48,7 @@ def capture_desktop():
         st.akagi_v3_apikey = 'demo-only-not-a-real-key'
         st.akagi_v3_model_4p, st.akagi_v3_model_3p = MODELS['4p'], MODELS['3p']
         # Never read or alter the user's wardrobe selection or enable flag.
-        with patch('gui.wardrobe.expansion_enabled',return_value=True):
+        with patch('gui.wardrobe.expansion_enabled',return_value=True),patch('game.riichicity.tools.NativeTools.find_client',return_value=''):
             window = create_preview(st)
         manager = window.bot_manager
         manager.bot = SimpleNamespace(name='Offline demonstration',protocol='v3',
@@ -73,7 +73,7 @@ def capture_desktop():
             assert page.pages.widget(1).verticalScrollBar().maximum()==0
             assert window.grab().save(str(OUTPUT/'ai.png'))
 
-            window.show_settings(3)
+            window.show_settings(2)
             window.show_connection()
             pump(app)
             assert not window.connection_upstream_switch.isChecked()
@@ -81,11 +81,26 @@ def capture_desktop():
             assert window.grab().save(str(OUTPUT/'proxy.png'))
             window._modal.dismiss()
 
+            window.show_settings(3)
+            pump(app)
+            assert window.settings_page.automation_actions.isVisible()
+            assert window.settings_page.fields['auto_idle_move'].isVisible()
+            assert window.grab().save(str(OUTPUT/'automation.png'))
+
             window.resize(900,560)
             window.show_page(1)
             pump(app)
             assert window.btn_start_browser.text()=='打开游戏'
             assert window.grab().save(str(OUTPUT/'wardrobe.png'))
+
+            manager.game_state=None
+            window.platform_select.setCurrentIndex(window.platform_select.findData('riichicity'))
+            manager.mitm_proxinject_need_update=False
+            window.resize(900,660)
+            window.show_settings(4)
+            pump(app)
+            assert not window.settings_page.fields['riichicity_client_path'].text()
+            assert window.grab().save(str(OUTPUT/'riichicity.png'))
         finally:
             manager.game_state = None
             window.close()
@@ -115,6 +130,12 @@ def capture_overlay():
             assert card.locator('[data-guide-row]').count()==3
             assert card.locator('[data-guide-tile]').count()==3
             card.screenshot(path=str(OUTPUT/'overlay.png'))
+            for filename,weights in (('overlay-close.png',(.46,.43,.07)),('overlay-three.png',(.34,.33,.30))):
+                line,options=mjai_reaction_2_guide({'type':'dahai','pai':'6m',
+                    'meta_options':list(zip(('6m','S','N'),weights))},3,LanStrZHS())
+                page.evaluate(RENDER_GUIDE,{'id':'readme-guide','ownerId':'owner','line':line,'options':options,
+                    'left':0,'top':0,'width':1280,'height':720,'rows':advice_rows(line,options,LanStrZHS())})
+                card.screenshot(path=str(OUTPUT/filename))
         finally:
             browser.close()
 
@@ -124,7 +145,7 @@ def main():
     with patch('requests.sessions.Session.request',side_effect=RuntimeError('README capture is offline')):
         capture_desktop()
         capture_overlay()
-    print(json.dumps({'ok':True,'screenshots':['game.png','ai.png','proxy.png','wardrobe.png','overlay.png'],
+    print(json.dumps({'ok':True,'screenshots':['game.png','ai.png','proxy.png','automation.png','wardrobe.png','overlay.png','overlay-close.png','overlay-three.png','riichicity.png'],
                       'data':'offline fixtures; demonstration model IDs; no account credentials'}))
 
 

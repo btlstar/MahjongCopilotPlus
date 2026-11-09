@@ -81,6 +81,38 @@ config:
             logger.warning('当前角色已不在资源表中，恢复默认角色')
             config['character'] = self.max_data['character'][0]
 
+    def _rewrite_room_player(self, player):
+        """Keep the local room appearance and voice identity in the same record.
+
+        Ready notifications contain no character; the client reuses room player
+        data. Never replace the entire Character message: retain future fields.
+        """
+        config = self.settings['config']
+        account_id = self.safe.get('account_id', 0)
+        own_player = bool(account_id) and player.account_id == account_id
+        if own_player:
+            character = config['character']
+            player.avatar_id = player.character.skin = config['characters'][character]
+            player.character.charid = character
+            player.character.is_upgraded, player.character.level = True, 5
+            player.character.exp = 0
+            player.character.ClearField('rewarded_level')
+            player.character.rewarded_level.extend([1, 2, 3, 4, 5])
+            player.character.ClearField('extra_emoji')
+            if config['emoji']:
+                player.character.extra_emoji.extend(self.max_data['emoji'].get(character, []))
+            if config['nickname']:
+                player.nickname = config['nickname']
+            player.title, player.verified = config['title'], config['verified']
+            player.character.ClearField('views')
+            for view in config['views'][config['views_index']]:
+                json_format.ParseDict(view, player.character.views.add())
+        elif config['safe_mode']:
+            player.character.charid = 200001
+            player.avatar_id = player.character.skin = 400101
+        if config['show_server']:
+            player.nickname = self.get_zone_id(player.account_id) + player.nickname
+
     def main(self, message, liqi_proto):
         modify = False
         drop = False
@@ -108,27 +140,8 @@ config:
                     modify = True
                     data = liqi_pb2.NotifyRoomPlayerUpdate()
                     data.ParseFromString(msg_block.data)
-                    for p in data.player_list:
-                        if p.account_id == self.safe['account_id']:
-                            p.avatar_id = self.settings['config']['characters'][self.settings['config']['character']]
-                            if self.settings['config']['nickname'] != '':
-                                p.nickname = self.settings['config']['nickname']
-                            p.title = self.settings['config']['title']
-
-                        if self.settings['config']['show_server']:
-                            p.nickname =self.get_zone_id(p.account_id)+p.nickname
-                        if self.settings['config']['safe_mode'] and p.account_id != self.safe['account_id']:
-                            p.character.charid=200001
-                            p.character.skin=400101
-                            p.avatar_id= 400101
-                    # for p in data.update_list:
-                    #     if p.account_id == self.safe['account_id']:
-                    #         p.avatar_id = self.settings['config']['characters'][self.settings['config']['character']]
-                    #         if self.settings['config']['nickname'] != '':
-                    #             p.nickname = self.settings['config']['nickname']
-                    #         p.title = self.settings['config']['title']
-                    #     if self.settings['config']['show_server']:
-                    #         p.nickname =self.get_zone_id(p.account_id)+p.nickname
+                    for player in data.player_list:
+                        self._rewrite_room_player(player)
                 case '.lq.NotifyGameFinishRewardV2':
                     modify = True
                     data = liqi_pb2.NotifyGameFinishRewardV2()
@@ -343,34 +356,12 @@ config:
                         data.account.loading_image.extend(
                             self.settings['config']['loading_image'])
                         data.account.verified = self.settings['config']['verified']
-                    case '.lq.Lobby.createRoom':  # 友人房 创建房间
+                    case '.lq.Lobby.createRoom' | '.lq.Lobby.joinRoom' | '.lq.Lobby.fetchRoom':
                         modify = True
-                        data = liqi_pb2.ResCreateRoom()
+                        data = liqi_pb2_res()
                         data.ParseFromString(msg_block.data)
-                        for p in data.room.persons:
-                            p.character.is_upgraded = True
-                            p.character.level = 5
-                            if p.account_id == self.safe['account_id']:
-                                p.avatar_id = self.settings['config']['characters'][self.settings['config']['character']]
-                                p.character.charid = self.settings['config']['character']
-                                p.character.exp = 0
-                                p.character.rewarded_level.extend(
-                                    [1, 2, 3, 4, 5])
-                                p.character.skin = self.settings['config'][
-                                    'characters'][self.settings['config']['character']]
-                                if self.settings['config']['emoji']:
-                                    p.character.extra_emoji.extend(
-                                        self.max_data['emoji'].get(p.character.charid, []))
-                                if self.settings['config']['nickname'] != '':
-                                    p.nickname = self.settings['config']['nickname']
-                                p.title = self.settings['config']['title']
-                                p.character.ClearField('views')
-                                for view in self.settings['config']['views'][self.settings['config']['views_index']]:
-                                    view_slot = p.character.views.add()
-                                    json_format.ParseDict(view, view_slot)
-                                p.verified = self.settings['config']['verified']
-                            if self.settings['config']['show_server']:
-                                p.nickname =self.get_zone_id(p.account_id)+p.nickname
+                        for player in data.room.persons:
+                            self._rewrite_room_player(player)
                     case '.lq.FastTest.authGame':  # 进入麻将桌
                         modify = True
                         data = liqi_pb2.ResAuthGame()
@@ -467,34 +458,6 @@ config:
                         # self.safe['title_list'] = data.title_list
                         data.ClearField('title_list')
                         data.title_list.extend(self.max_data['title'])
-                    case '.lq.Lobby.fetchRoom':  # 获取友人房信息
-                        modify = True
-                        data = liqi_pb2.ResSelfRoom()
-                        data.ParseFromString(msg_block.data)
-                        for p in data.room.persons:
-                            p.character.is_upgraded = True
-                            p.character.level = 5
-                            p.character.rewarded_level.extend([1, 2, 3, 4, 5])
-                            if p.account_id == self.safe['account_id']:
-                                p.avatar_id = self.settings['config']['characters'][self.settings['config']['character']]
-                                p.character.charid = self.settings['config']['character']
-                                p.character.exp = 0
-
-                                p.character.skin = self.settings['config'][
-                                    'characters'][self.settings['config']['character']]
-                                if self.settings['config']['emoji']:
-                                    p.character.extra_emoji.extend(
-                                        self.max_data['emoji'].get(p.character.charid, []))
-                                if self.settings['config']['nickname'] != '':
-                                    p.nickname = self.settings['config']['nickname']
-                                p.title = self.settings['config']['title']
-                                p.character.ClearField('views')
-                                for view in self.settings['config']['views'][self.settings['config']['views_index']]:
-                                    view_slot = p.character.views.add()
-                                    json_format.ParseDict(view, view_slot)
-                                p.verified = self.settings['config']['verified']
-                            if self.settings['config']['show_server']:
-                                p.nickname =self.get_zone_id(p.account_id)+p.nickname
                     case '.lq.Lobby.fetchBagInfo':  # 获取背包
                         modify = True
                         data = liqi_pb2.ResBagInfo()
@@ -749,5 +712,3 @@ config:
         for i in range(5):
             Z = (511 & Z) << 17 | Z >> 9
         return int(Z + S + 1e7)
-    
-

@@ -5,32 +5,36 @@
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D4)
 ![License](https://img.shields.io/badge/License-GPLv3-blue)
-![Status](https://img.shields.io/badge/Status-Preview-orange)
+![Status](https://img.shields.io/badge/Status-Development%20Paused-yellow)
 
-MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot) 的基础上持续开发，参考 [MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max) 的整合思路，接入 [MajsoulMax](https://github.com/Avenshy/MajsoulMax)，并重构桌面界面、设置和提示体验。
+MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot) 的基础上扩展，参考 [MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max) 的整合思路，接入 [MajsoulMax](https://github.com/Avenshy/MajsoulMax)，并重构桌面界面、设置和提示体验。
 
-当前支持 **雀魂三麻／四麻**。Akagi v3 三麻无需本地三麻扩展；本地模型与旧版 OT 的原生库要求见下文。天凤、一番街、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
+当前支持 **雀魂三麻／四麻**，新增 **一番街 Windows 原生客户端实验性接入**（主界面 AI 建议、可选外部 RiichiCityUnlock，真实对局待验证）。Akagi v3 三麻无需本地三麻扩展；本地模型与旧版 OT 的原生库要求见下文。天凤、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
 
 > **源码部署，通过 `start.bat` 启动。** 请先安装 Python 3.11 x64、依赖与 Chromium；不提供 exe／免安装运行包。更新与问题反馈请使用[本仓库](https://github.com/btlstar/MahjongCopilotPlus)。
 
 ![对局页：AI 建议、当前手牌及底部已加载型号](assets/screenshots/game.png)
 
-截图基于 `v0.1.0-preview.3` 的实际界面，以离线演示数据生成；`4p-demo-model`／`3p-demo-model` 为虚构示例，不是可用型号、默认型号或最新型号推荐。
+截图基于当前源码的实际界面（含未发布的设置分类与提示框分组调整），以离线演示数据生成；`4p-demo-model`／`3p-demo-model` 为虚构示例，不是可用型号、默认型号或最新型号推荐。
 
 ## 当前版本
+
+**维护状态：暂缓新增开发。** 2026-11-09 的整理提交保存了此前尚未上传的模型核验、提示框分组、一番街实验性接入与界面改动。当前 `main` 含未单独发布的更新，详见[更新记录中的“未发布”](CHANGELOG.md)。
 
 `v0.1.0-preview.3`：完善 AI 连接与模型状态，修复刷新后的游戏内提示恢复及网络异常时程序误关浏览器的问题。详见[本次发布说明](docs/RELEASE_NOTES.md)与[更新记录](CHANGELOG.md)。
 
 ## 特性
 
+- **一番街实验性接入**：协议转换接入现有 AI 与模型核验；支持仅代理本次启动客户端的进程捕获，也可手动分流；可串联自行准备的 RiichiCityUnlock，工具二进制不随仓库分发。参阅[一番街配置](docs/RIICHICITY.md)。
+
 - **深色桌面界面**：Qt 紧凑顶栏，“对局／装扮／设置”三个主页面，设置、帮助、诊断和连接配置均在程序内显示。
 - **统一麻将牌样式**：万、筒、索分别用红、蓝、绿区分，赤五有额外标记；主界面与游戏内提示一致。
-- **简洁提示**：只保留游戏内卡片，可拖动并记住位置；顶栏与设置页开关即时同步，关闭后仍可在主界面查看建议。
-- **两键老板键**：默认推荐 `Alt+Q`，另有 `Alt+Z`、`Alt+X` 和自定义选项，隐藏／恢复程序及它启动的游戏浏览器。
-- **多种 AI 来源**：AkagiOT、MJAI、兼容的本地 Mortal 模型；根据来源显示对应设置，本地模型可浏览选择文件。Akagi v3 支持获取授权列表后手动选择四麻／三麻型号；底栏显示已加载型号，推理回报可在诊断中查看。
+- **简洁提示**：雀魂只保留游戏内卡片，可拖动并记住位置；接近推荐值的两至三项同色提亮，分割线随组移动，字号与行高固定；顶栏与设置页开关即时同步。
+- **两键老板键**：默认推荐 `Alt+Q`，另有 `Alt+Z`、`Alt+X` 和自定义选项，隐藏／恢复程序及它启动的游戏浏览器或一番街客户端窗口。
+- **多种 AI 来源**：AkagiOT、MJAI、兼容的本地 Mortal 模型；根据来源显示对应设置，本地模型可浏览选择文件。Akagi v3 支持获取授权列表后手动选择四麻／三麻型号；底栏显示已加载型号和真实响应核验结果；v3 逐次校验模型 ID，异常不降级，推理核验历史可在诊断中查看。
 - **可选装扮扩展**：MajsoulMax 集成、资源和协议更新，以及搭配参考；当前不提供从 GUI 批量应用或对局中即时换装。
 - **窗口适配**：游戏窗口可调整大小；手动操作模式不再因 Windows 显示缩放反复弹出 100% 缩放错误。
-- **自动操作保留**：自动打牌、自动加入和定时停止归入高级设置，默认关闭。
+- **自动操作保留**：雀魂自动打牌、自动加入和定时停止集中于独立设置页；操作细节直接显示，保存入口固定在页底，默认关闭自动操作。
 
 <details>
 <summary>更多界面截图</summary>
@@ -41,13 +45,29 @@ AI 连接设置：密钥显隐、按玩法选择型号、获取列表与测试�
 
 游戏内提示卡片（局部截图）：与主界面共享麻将牌样式，整张卡片可拖动，不另开独立窗口。
 
-![实际游戏内 HTML 提示卡片，离线渲染](assets/screenshots/overlay.png)
+![单项领先的游戏内提示卡片，离线渲染](assets/screenshots/overlay.png)
+
+两项接近时，百分比同色，分割线移到第二项后：
+
+![两项推荐值接近](assets/screenshots/overlay-close.png)
+
+三项接近时，同等提亮，不显示分割线：
+
+![三项推荐值接近](assets/screenshots/overlay-three.png)
 
 程序内连接配置：本地端口与上游代理分开设置，图中为关闭上游代理。
 
 ![连接与代理](assets/screenshots/proxy.png)
 
-装扮搭配参考：在游戏内逐项装备，不支持 GUI 一键应用。
+自动操作：与连接、诊断分开，细节无需展开，底部固定保存入口。
+
+![自动操作设置与固定保存按钮](assets/screenshots/automation.png)
+
+一番街平台设置：按需选择进程捕获和外部解锁工具，截图为未配置的演示表单。
+
+![一番街实验性平台设置](assets/screenshots/riichicity.png)
+
+雀魂装扮搭配参考：在游戏内逐项装备，不支持 GUI 一键应用。
 
 ![装扮页](assets/screenshots/wardrobe.png)
 
@@ -90,9 +110,13 @@ py -3.11 -m venv venv
 1. 打开“设置 → AI 连接”，选择 `AkagiOT` 和 `Akagi v3 · 可选模型`，填写对应 API Key。
 2. 点击“获取可用模型”，在四麻／三麻下拉框选择所需型号；至少选择一种玩法，留空的玩法不启用。
 3. 测试连接后保存，等待底部状态栏显示就绪及已加载型号。测试通过只代表连接与授权检查通过。
-4. 点击“打开游戏”，在程序启动的浏览器中进入对局。顶栏“游戏内提示”控制游戏内卡片；没有建议时可从右下角“诊断”查看原因。
+4. 点击“打开游戏”，在程序启动的浏览器中进入对局。顶栏“游戏内提示”控制游戏内卡片；收到实际响应后，底栏会显示“已核验”；没有建议时可从右下角“诊断”查看推理失败原因和逐次模型记录。
 
 如果显示代理证书安装错误，按[安装与排错说明](docs/INSTALL.md)处理。不要将程序生成的证书私钥、浏览器资料或含凭据的设置文件提交到 GitHub。
+
+### 一番街客户端
+
+顶栏选择“一番街”，在“设置 → 平台”保存游戏本体路径与捕获方式，可选启用外部 RiichiCityUnlock。请先关闭原先打开的游戏，再从 Copilot 启动；目前建议仅在主界面显示，不支持原生游戏内提示、自动操作或中途重连恢复。详细操作与验证边界见[一番街配置](docs/RIICHICITY.md)。
 
 ### AI 与原生库
 
@@ -118,7 +142,8 @@ py -3.11 -m venv venv
 | 平台 | 当前状态 |
 | --- | --- |
 | 雀魂 | 已接入；模型、原生库和游戏协议版本需匹配 |
-| 天凤、一番街 | 规划中 |
+| 一番街 | 实验性原生客户端协议与 AI 接入；外部解锁可选；真实对局待验证 |
+| 天凤 | 规划中 |
 | 天月麻将、掌心麻将 | 规划中 |
 
 这是学习、研究与个人实验项目。请遵守游戏平台规则，避免破坏公平对局；AI 实时辅助、自动操作或客户端修改可能导致账号处罚。项目不保证规避检测，不提供账号安全或胜率保证。
@@ -131,6 +156,7 @@ py -3.11 -m venv venv
 - [开发目录与启动入口](docs/WORKSPACE.md)
 - [升级与配置迁移](docs/UPGRADING.md)
 - [资源下载与 TUN／直连排查](docs/NETWORK.md)
+- [一番街实验性接入](docs/RIICHICITY.md)
 - [桌面使用说明](DESKTOP.md)
 - [MajsoulMax 集成与数据更新](mjmax/INTEGRATION.md)
 - [贡献指南](CONTRIBUTING.md)
@@ -145,6 +171,7 @@ py -3.11 -m venv venv
 .\venv\Scripts\python.exe -m unittest discover -s tests -v
 .\venv\Scripts\python.exe tests/desktop_smoke.py
 .\venv\Scripts\python.exe tests/native_desktop_smoke.py
+.\venv\Scripts\python.exe tests/riichicity_desktop_smoke.py
 .\venv\Scripts\python.exe scripts/check_publication.py
 ```
 
@@ -157,6 +184,7 @@ py -3.11 -m venv venv
 - [latorc/MahjongCopilot](https://github.com/latorc/MahjongCopilot)：上游程序、AI 接口、捕获与自动操作基础。
 - [jiboyingg/MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max)：Copilot 与 MajsoulMax 的整合参考。
 - [Avenshy/MajsoulMax](https://github.com/Avenshy/MajsoulMax)、[MajsoulData](https://github.com/Avenshy/MajsoulData)：装扮模块、协议和资源快照。
+- [Avenshy/RiichiCityUnlock](https://github.com/Avenshy/RiichiCityUnlock)：用户单独准备的外部工具，保留其原有模式与配置。
 - [Equim-chan/Mortal](https://github.com/Equim-chan/Mortal)、[shinkuan/Akagi](https://github.com/shinkuan/Akagi)：模型结构、引擎与相关工作。
 - [MahjongRepository/mahjong_soul_api](https://github.com/MahjongRepository/mahjong_soul_api)、[747929791/majsoul_wrapper](https://github.com/747929791/majsoul_wrapper)、[MJAI](https://mjai.app/)：协议和实现参考。
 - [PragmaTwice/proxinject](https://github.com/PragmaTwice/proxinject)、Qt for Python、Playwright、mitmproxy 及其他依赖的贡献者。
@@ -169,4 +197,4 @@ py -3.11 -m venv venv
 
 ---
 
-**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is currently supported; other platforms are planned. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. Distributed as source only; install Python, dependencies and Chromium, then launch with start.bat. See the license and third-party notices before redistribution.
+**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is supported; experimental native Riichi City capture and AI advice are available, with optional externally supplied RiichiCityUnlock. Live Riichi City gameplay remains unverified; other platforms are planned. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. Distributed as source only; install Python, dependencies and Chromium, then launch with start.bat. See the license and third-party notices before redistribution.

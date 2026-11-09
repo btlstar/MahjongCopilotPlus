@@ -1,11 +1,17 @@
 # Modified for MahjongCopilotPlus on 2026-11-03; see NOTICE.md.
 """Akagi v3 MJAI API, based on its published wire protocol (no Rust copied)."""
 from copy import deepcopy
+from concurrent.futures import Future, TimeoutError as FutureTimeout
+from datetime import datetime
+import re
+import threading
+import time
 import math
 from urllib.parse import urljoin,urlsplit
 import requests
 
 from bot.bot import Bot, GameMode
+from common.log_helper import LOGGER
 from .http_client import direct_session
 
 DEFAULT_URL = 'https://mjapi.shinkuan.me'
@@ -33,6 +39,8 @@ class AkagiV3Client:
         self.key = key.strip()
         self.timeout = timeout
         self.session = direct_session()
+        self._react_lock = threading.Lock()
+        self._pending_react = None
 
     def _request(self,method,route,body=None):
         url = self.url+route
@@ -108,8 +116,27 @@ class AkagiV3Client:
     def react(self,model,seat,events):
         if not model:
             raise ValueError('请先为当前玩法选择模型；未使用服务端默认模型。')
-        body = {'model':model,'player_id':seat,'events':events}
-        return self._request('POST','/v3/react',body)
+        body = {'model':model,'player_id':seat,'events':deepcopy(events)}
+        # Requests' socket timeout does not bound DNS, all address attempts,
+        # redirects and a slowly streamed body together. Bound the caller's
+        # entire wait without touching bot state from the network worker.
+        with self._react_lock:
+            if self._pending_react is not None and not self._pending_react.done():
+                raise ValueError('Akagi v3 上次网络请求仍未结束，本次未发送；未切换模型。')
+            pending = Future()
+            self._pending_react = pending
+            def run():
+                try:
+                    pending.set_result(self._request('POST','/v3/react',body))
+                except Exception as error:
+                    pending.set_exception(error)
+            threading.Thread(target=run,name='AkagiRequest',daemon=True).start()
+        try:
+            return pending.result(timeout=self.timeout)
+        except FutureTimeout:
+            # The worker may still be resolving DNS. Its response is never
+            # reused for another decision; at most one request can be in flight.
+            raise ValueError(f'Akagi v3 推理总等待超过 {self.timeout:g} 秒，已放弃本次建议；迟到响应不会用于后续出牌。') from None
 
 
 class BotAkagiV3(Bot):
@@ -133,6 +160,10 @@ class BotAkagiV3(Bot):
         self.last_served_model = None
         self.model_confirmed = False
         self.last_error = None
+        self.model_checks = ()
+        self.last_model_check = None
+        self.verified_total = 0
+        self.failed_total = 0
 
     @property
     def supported_modes(self):
@@ -150,6 +181,7 @@ class BotAkagiV3(Bot):
         self.last_requested_model = self.last_served_model = None
         self.model_confirmed = False
         self.last_error = None
+        self.last_model_check = None
 
     def _event(self,message):
         event = deepcopy(message)
@@ -180,14 +212,15 @@ class BotAkagiV3(Bot):
         if not input_msg.get('can_act',True):
             return None
         decision = ((kind in ('tsumo','chi','pon') and actor==self.seat) or
-                    (kind in ('dahai','kakan','ankan','nukidora') and actor!=self.seat))
+                    (kind in ('dahai','kakan','ankan','nukidora') and actor!=self.seat) or
+                    (input_msg.get('can_act') is True and kind=='dora'))
         if not decision or not any(item['type']=='start_kyoku' for item in self.events):
             return None
         try:
             reaction = self._infer(self.events)
             if reaction and reaction['type']=='reach':
                 # Predict the follow-up without permanently appending reach.
-                following = self._infer(self.events+[{'type':'reach','actor':self.seat}])
+                following = self._infer(self.events+[{'type':'reach','actor':self.seat}],phase='reach_discard')
                 if not following or following.get('type')!='dahai':
                     raise ValueError('Akagi v3 未返回立直后的出牌，未采用此建议。')
                 reaction['reach_dahai'] = following
@@ -198,45 +231,79 @@ class BotAkagiV3(Bot):
             self.last_error = str(error)
             raise
 
-    def _infer(self,events):
+    def _safe_model_id(self,value):
+        if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}',value):
+            return None
+        if self.client.key and self.client.key in value:
+            return None
+        return value
+
+    def _record_model_check(self,requested,served,status,started,phase):
+        self.verified_total += status=='confirmed'
+        self.failed_total += status!='confirmed'
+        record={'sequence':self.verified_total+self.failed_total,
+                'time':datetime.now().astimezone().isoformat(timespec='seconds'),
+                'requested':self._safe_model_id(requested),
+                'served':self._safe_model_id(served),'status':status,'phase':phase,
+                'elapsed_ms':round((time.monotonic()-started)*1000),
+                'verified_total':self.verified_total,'failed_total':self.failed_total}
+        # Publish whole snapshots, so the GUI never walks a mutating deque.
+        self.model_checks = (*self.model_checks[-29:],record)
+        self.last_model_check = record
+        LOGGER.info('AI_MODEL_CHECK sequence=%s requested=%s served=%s status=%s phase=%s elapsed_ms=%s',
+                    record['sequence'],record['requested'],record['served'],status,phase,record['elapsed_ms'])
+
+    def _infer(self,events,phase='decision'):
         game = '3p' if self.mode==GameMode.MJ3P else '4p'
         requested = self.models[game]
         self.last_requested_model = requested or None
         self.last_served_model = None
         self.model_confirmed = False
-        payload = self.client.react(requested,self.seat,deepcopy(events))
-        served = payload.get('model')
-        if served is not None and (not isinstance(served,str) or not served.strip()):
-            raise ValueError('Akagi v3 返回的模型 ID 无效。')
-        if requested and served and served!=requested:
-            raise ValueError(f'服务端返回模型 {served}，与所选 {requested} 不符；未采用建议。')
-        reaction = payload.get('reaction')
-        if reaction is None:
+        served,status,started = None,'request_failed',time.monotonic()
+        try:
+            payload = self.client.react(requested,self.seat,deepcopy(events))
+            served = payload.get('model')
+            status = 'missing_model'
+            if served is None:
+                raise ValueError('Akagi v3 未回报本次推理的模型 ID，无法核验所选模型；未采用建议。')
+            status = 'invalid_model'
+            if not self._safe_model_id(served):
+                raise ValueError('Akagi v3 返回的模型 ID 无效；未采用建议。')
+            status = 'mismatch'
+            if served!=requested:
+                raise ValueError(f'服务端返回模型 {served}，与所选 {requested} 不符；未采用建议。')
+            status = 'invalid_reaction'
+            reaction = payload.get('reaction')
+            if reaction is None:
+                self.last_served_model = served
+                self.model_confirmed = bool(served)
+                status = 'confirmed'
+                return None
+            # The live v3 service emits `kita` for sanma north extraction,
+            # while Copilot's MJAI events and UI use `nukidora`.
+            if isinstance(reaction,dict) and reaction.get('type')=='kita':
+                reaction = dict(reaction,type='nukidora')
+            allowed = {'none','dahai','reach','chi','pon','daiminkan','ankan','kakan','hora','ryukyoku','nukidora'}
+            if not isinstance(reaction,dict) or reaction.get('type') not in allowed:
+                raise ValueError('Akagi v3 返回的动作格式不正确。')
+            if reaction['type']!='none' and reaction.get('actor')!=self.seat:
+                raise ValueError('Akagi v3 返回了其他座位的动作，未采用建议。')
+            reaction = deepcopy(reaction)
+            reaction.pop('meta',None)
+            options = []
+            for item in payload.get('candidates') or []:
+                if not isinstance(item,dict):
+                    continue
+                action,probability = item.get('action'),item.get('prob')
+                if not isinstance(action,str) or not isinstance(probability,(float,int)) or not math.isfinite(probability) or not 0<=probability<=1:
+                    continue
+                action = action.split(':',1)[1] if action.startswith('dahai:') else action
+                action = {'chi_low':'chi','chi_mid':'chi','chi_high':'chi','kan':'kan_select','kita':'nukidora'}.get(action,action)
+                options.append((action,float(probability)))
+            reaction['meta_options'] = options
             self.last_served_model = served
             self.model_confirmed = bool(served)
-            return None
-        # The live v3 service emits `kita` for sanma north extraction,
-        # while Copilot's MJAI events and UI use `nukidora`.
-        if isinstance(reaction,dict) and reaction.get('type')=='kita':
-            reaction = dict(reaction,type='nukidora')
-        allowed = {'none','dahai','reach','chi','pon','daiminkan','ankan','kakan','hora','ryukyoku','nukidora'}
-        if not isinstance(reaction,dict) or reaction.get('type') not in allowed:
-            raise ValueError('Akagi v3 返回的动作格式不正确。')
-        if reaction['type']!='none' and reaction.get('actor')!=self.seat:
-            raise ValueError('Akagi v3 返回了其他座位的动作，未采用建议。')
-        reaction = deepcopy(reaction)
-        reaction.pop('meta',None)
-        options = []
-        for item in payload.get('candidates') or []:
-            if not isinstance(item,dict):
-                continue
-            action,probability = item.get('action'),item.get('prob')
-            if not isinstance(action,str) or not isinstance(probability,(float,int)) or not math.isfinite(probability) or not 0<=probability<=1:
-                continue
-            action = action.split(':',1)[1] if action.startswith('dahai:') else action
-            action = {'chi_low':'chi','chi_mid':'chi','chi_high':'chi','kan':'kan_select','kita':'nukidora'}.get(action,action)
-            options.append((action,float(probability)))
-        reaction['meta_options'] = options
-        self.last_served_model = served
-        self.model_confirmed = bool(served)
-        return reaction
+            status = 'confirmed'
+            return reaction
+        finally:
+            self._record_model_check(requested,served,status,started,phase)

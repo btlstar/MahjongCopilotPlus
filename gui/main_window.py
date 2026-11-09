@@ -17,7 +17,7 @@ from .boss_key import GlobalHotkey, OwnedBrowserWindows
 from .theme import GREEN, MUTED, RED, dark_titlebar
 from .components import Card, AdviceView, HandView, Switch, QuietDelegate, label, button, column, horizontal, setting_row
 from .preferences import SettingsPage, AI_KEYS, valid_url
-from .ai_feedback import loaded_models_text,runtime_models_text
+from .ai_feedback import loaded_models_text,runtime_models_text,inference_footer_text,model_check_history_text
 from .wardrobe import WardrobePage
 from .overlays import ModalOverlay
 
@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         self.resize(*self.st.desktop_size)
         self.setMinimumSize(580,460)
         self._build_shell()
+        self.settings_page.sync_platform()
         self.configure_boss_key(self.st.boss_key_enabled,self.st.boss_key)
         dark_titlebar(self)
         self.sync_game_overlay()
@@ -73,10 +74,14 @@ class MainWindow(QMainWindow):
         platform = QComboBox()
         platform.setAccessibleName('游戏平台')
         platform.setItemDelegate(QuietDelegate(platform))
-        platform.addItem('雀魂')
-        for text in ('一番街','天凤','天月麻将','掌心麻将'):
+        platform.addItem('雀魂','majsoul')
+        platform.addItem('一番街','riichicity')
+        for text in ('天凤','天月麻将','掌心麻将'):
             platform.addItem(text+' · 规划中')
             platform.model().item(platform.count()-1).setEnabled(False)
+        platform.setCurrentIndex(platform.findData(self.st.platform))
+        self.platform_select = platform
+        platform.currentIndexChanged.connect(self.change_platform)
         platform.setFixedWidth(122)
         nav.addWidget(platform)
         self.guide_button = button('游戏内提示',self.toggle_game_overlay,'Toggle',True)
@@ -130,6 +135,35 @@ class MainWindow(QMainWindow):
         body.addStretch()
         self.game_page.setWidget(content)
 
+    def change_platform(self):
+        selected=self.platform_select.currentData()
+        if selected not in ('majsoul','riichicity') or selected==self.st.platform:
+            return
+        native=self.bot_manager.native_tools.client_process
+        if self.bot_manager.is_in_game() or self.bot_manager.browser.is_running() or (native and native.poll() is None):
+            self.platform_select.blockSignals(True)
+            self.platform_select.setCurrentIndex(self.platform_select.findData(self.st.platform))
+            self.platform_select.blockSignals(False)
+            modal=self._show_modal('暂时无法切换平台')
+            modal.body.addWidget(label('请先结束对局，并关闭 Copilot 启动的游戏窗口。',wrap=True))
+            modal.reveal()
+            return
+        try:
+            self.save_settings({'platform':selected})
+        except OSError:
+            self.platform_select.blockSignals(True)
+            self.platform_select.setCurrentIndex(self.platform_select.findData(self.st.platform))
+            self.platform_select.blockSignals(False)
+            return
+        self.bot_manager.rc_flows.clear()
+        self.bot_manager.lobby_flow_id=None
+        self.bot_manager.game_flow_id=None
+        self.bot_manager.rc_frame_count=0
+        self.bot_manager.rc_last_command=''
+        self.wardrobe.sync_platform()
+        self.settings_page.sync_platform()
+        self.sync_game_overlay()
+
     def show_page(self,index):
         self.pages.setCurrentIndex(index)
         for i,item in enumerate(self.nav_buttons):
@@ -161,7 +195,7 @@ class MainWindow(QMainWindow):
                                    ('auto_join_game',self.bot_manager.enable_autojoin,self.bot_manager.disable_autojoin)):
             if key in changes and old[key]!=changes[key]:
                 (enable if changes[key] else disable)()
-        if any(key in changes and old[key]!=changes[key] for key in ('mitm_port','upstream_proxy','enable_proxinject','inject_process_name')):
+        if any(key in changes and old[key]!=changes[key] for key in ('mitm_port','upstream_proxy','enable_proxinject','inject_process_name','platform','riichicity_unlock_enabled','riichicity_unlock_path','riichicity_unlock_ca','riichicity_upstream_proxy')):
             self.bot_manager.mitm_proxinject_need_update = True
         if 'enable_overlay' in changes:
             self.sync_game_overlay()
@@ -214,10 +248,26 @@ class MainWindow(QMainWindow):
         self._boss_hidden = False
 
     def open_game(self):
+        if self.st.platform=='riichicity':
+            if self.bot_manager.mitm_proxinject_need_update:
+                return
+            try:
+                self.bot_manager.start_browser()
+            except Exception as error:
+                modal=self._show_modal('无法启动一番街')
+                modal.body.addWidget(label(str(error),wrap=True))
+                modal.body.addWidget(button('客户端与解锁配置',lambda:self._open_native_settings()))
+                modal.reveal()
+            return
         if self.bot_manager.browser.is_running():
             self.bot_manager.browser.bring_to_front()
         elif not self.bot_manager.mitm_proxinject_need_update:
             self.bot_manager.start_browser()
+
+    def _open_native_settings(self):
+        if self._modal:
+            self._modal.dismiss()
+        self.show_settings(4)
 
     def toggle_game_overlay(self):
         try:
@@ -227,9 +277,12 @@ class MainWindow(QMainWindow):
             LOGGER.exception('Unable to save game overlay preference')
 
     def sync_game_overlay(self):
-        self.guide_button.setChecked(self.st.enable_overlay)
+        native=self.st.platform=='riichicity'
+        self.guide_button.setEnabled(not native)
+        self.guide_button.setChecked(self.st.enable_overlay and not native)
         self.guide_button.setText('游戏内提示 · 开' if self.st.enable_overlay else '游戏内提示 · 关')
-        self.guide_button.setToolTip('开关游戏内 AI 提示；主界面始终保留建议。')
+        self.guide_button.setText('主界面提示' if native else self.guide_button.text())
+        self.guide_button.setToolTip('原生一番街的 AI 建议显示在 Copilot 主界面。' if native else '开关游戏内 AI 提示；主界面始终保留建议。')
         self.settings_page.sync_game_overlay_choice()
 
     def _tick(self):
@@ -280,12 +333,13 @@ class MainWindow(QMainWindow):
         state,color = self._status()
         error = manager.main_thread_exception or manager.get_game_error()
         self.game_notice.setText('运行异常，详情见右下角“诊断”。' if error else '')
-        ai_error = getattr(manager.bot,'last_error',None)
+        ai_error = getattr(manager.game_state,'last_error',None) or getattr(manager.bot,'last_error',None)
         if ai_error and not error:
             self.game_notice.setText('AI 暂时无法给出建议，详情见“诊断”。')
         self.game_notice.setStyleSheet('color:#e27782;')
         connected = manager.get_game_client_type() is not None
-        self.game_status.setText('● 雀魂 · '+('连接异常' if error else '对局中' if manager.is_in_game() else '已连接' if connected else '未连接'))
+        platform_name='一番街' if self.st.platform=='riichicity' else '雀魂'
+        self.game_status.setText('● '+platform_name+' · '+('连接异常' if error else '对局中' if manager.is_in_game() else '已连接' if connected else '未连接'))
         game_color = RED if error else GREEN if connected else MUTED
         if getattr(self,'_game_status_color',None)!=game_color:
             self.game_status.setStyleSheet('font-size:11px;color:'+game_color+';')
@@ -306,9 +360,10 @@ class MainWindow(QMainWindow):
             ai_text,color = 'AI · 未加载',RED
         self.ai_status.setText('● '+ai_text)
         loaded = loaded_models_text(manager.bot) if manager.bot and not manager.is_loading_bot else ''
-        self.ai_status.setToolTip('当前已加载：'+loaded if loaded else '')
-        self.model_status.setToolTip('当前已加载：'+loaded if loaded else '')
-        model_text = loaded.partition(' · ')[2] or loaded
+        model_details = runtime_models_text(manager) if loaded else ''
+        self.ai_status.setToolTip(model_details)
+        self.model_status.setToolTip(model_details)
+        model_text = inference_footer_text(manager.bot) or loaded.partition(' · ')[2] or loaded
         self.model_status.setText(self.model_status.fontMetrics().elidedText(
             model_text,Qt.ElideRight,max(0,self.model_status.width())))
         self.settings_page.refresh_ai_load()
@@ -317,7 +372,7 @@ class MainWindow(QMainWindow):
             self._ai_status_color = color
         self.ai_status.setMinimumWidth(self.ai_status.fontMetrics().horizontalAdvance(self.ai_status.text())+18)
         running,pending = manager.browser.is_running(),manager.mitm_proxinject_need_update
-        self.btn_start_browser.setText('回到游戏' if running else '更新连接中…' if pending else '打开游戏')
+        self.btn_start_browser.setText(('更新连接中…' if pending else '打开一番街') if self.st.platform=='riichicity' else '回到游戏' if running else '更新连接中…' if pending else '打开游戏')
         self.btn_start_browser.setEnabled(running or not pending)
         self.btn_start_browser.setToolTip(state)
         if manager.has_automation_scale_warning() and not error:
@@ -362,6 +417,9 @@ class MainWindow(QMainWindow):
         return modal
 
     def show_connection(self):
+        if self.st.platform=='riichicity':
+            self.show_settings(4)
+            return
         modal = self._show_modal('连接与代理')
         fields = {}
         for key,title in (('mitm_port','Copilot 本地端口'),('upstream_proxy','上游代理地址')):
@@ -448,12 +506,25 @@ class MainWindow(QMainWindow):
         upstream = controller.upstream_proxy if running else self.st.upstream_proxy
         if running and controller.mode=='socks5':
             upstream = ''
-        route = 'Copilot → '+(proxy_endpoint(upstream)+' → ' if upstream else '')+'游戏服务器'+('（直连）' if not upstream else '')
+        route = 'Copilot → '+(proxy_endpoint(upstream)+' → ' if upstream else '')+('一番街服务器' if self.st.platform=='riichicity' else '游戏服务器')+('（直连）' if not upstream else '')
         modal.body.addWidget(label(('当前路径：' if running else '已保存路径：')+route,wrap=True))
         if not running:
             modal.body.addWidget(label('本地拦截代理未启动。'))
         elif self.bot_manager.mitm_proxinject_need_update:
-            modal.body.addWidget(label('连接设置待应用，请关闭游戏浏览器后重新打开。'))
+            modal.body.addWidget(label('连接设置待应用，请关闭原生游戏客户端后重新打开。' if self.st.platform=='riichicity' else '连接设置待应用，请关闭游戏浏览器后重新打开。'))
+        if self.st.platform=='riichicity':
+            native=self.bot_manager.native_tools
+            bridge=native.capture_bridge
+            capture='自动进程代理' if self.st.riichicity_capture_method=='inject' else '手动进程分流'
+            modal.body.addWidget(label('原生捕获：'+capture+(f' · 本地入口 {bridge.port}' if bridge else ''),wrap=True))
+            modal.body.addWidget(label(f'已识别一番街帧：{self.bot_manager.rc_frame_count} · 最近通知：{self.bot_manager.rc_last_command or "尚无"}',wrap=True))
+            process=native.unlock_process
+            modal.body.addWidget(label('RiichiCityUnlock：'+('运行中' if process and process.poll() is None else '未运行')))
+            modal.body.addWidget(label('原生客户端建议显示在主界面；请从完整的新小局开始验证。',wrap=True))
+            for name,title in (('riichicity-unlock.log','解锁启动日志'),('riichicity-capture.log','原生捕获日志')):
+                file=native.log_folder/name
+                if file.is_file():
+                    modal.body.addWidget(button('打开'+title,lambda checked=False,p=file:os.startfile(p)))
         if self.bot_manager.browser.last_page_error:
             modal.body.addWidget(label(self.bot_manager.browser.last_page_error,wrap=True))
         for title,value in (('最近转发失败',controller.ws_data_addon.last_network_error),
@@ -462,8 +533,16 @@ class MainWindow(QMainWindow):
                 modal.body.addWidget(label(title+'：'+value,wrap=True))
         modal.body.addWidget(label(runtime_models_text(self.bot_manager),wrap=True))
         bot = self.bot_manager.bot
-        if getattr(bot,'last_error',None):
-            modal.body.addWidget(label('推理未完成：'+str(bot.last_error),'Error',True))
+        inference_error = getattr(self.bot_manager.game_state,'last_error',None) or getattr(bot,'last_error',None)
+        if inference_error:
+            modal.body.addWidget(label('推理未完成：'+str(inference_error),'Error',True))
+        checks = model_check_history_text(bot)
+        if checks:
+            audit = QPlainTextEdit()
+            audit.setReadOnly(True)
+            audit.setMinimumHeight(120)
+            audit.setPlainText(checks)
+            modal.body.addWidget(audit)
         if getattr(bot,'model_report_note',None):
             modal.body.addWidget(label(bot.model_report_note,wrap=True))
         error = self.bot_manager.main_thread_exception or self.bot_manager.get_game_error()
@@ -492,7 +571,7 @@ class MainWindow(QMainWindow):
         for title,text in (
             ('开始使用','打开游戏并进入牌局。AI 建议与手牌会自动显示。'),
             ('游戏内提示','顶栏开关即时显示或隐藏游戏内提示；整张卡片可拖动，双击或右键复位。主界面始终显示 AI 建议。'),
-            ('老板键',self.st.boss_key+' · 隐藏或恢复 Copilot 和它打开的游戏浏览器。'),
+            ('老板键',self.st.boss_key+' · 隐藏或恢复 Copilot 和它打开的游戏窗口。'),
             ('退出','使用窗口右上角 X。程序会保存配置并关闭所属浏览器；服务器上的牌局不会因此结束。'),
             ('装扮','MajsoulMax 在游戏内装备。搭配页是参考，不会替你修改当前装扮。')):
             modal.body.addWidget(label(title,'Caption'))
@@ -535,9 +614,10 @@ class MainWindow(QMainWindow):
         event.ignore()
         if self._closing:
             return
-        if self.bot_manager.is_in_game():
+        native=self.bot_manager.native_tools.client_process
+        if self.bot_manager.is_in_game() or (self.st.platform=='riichicity' and native and native.poll() is None):
             modal = self._show_modal('退出程序')
-            modal.body.addWidget(label('退出会关闭本程序打开的游戏浏览器。当前服务器牌局不会因此结束。',wrap=True))
+            modal.body.addWidget(label('退出会停止一番街代理与 AI；请先在原生客户端正常结束对局。' if self.st.platform=='riichicity' else '退出会关闭本程序打开的游戏浏览器。当前服务器牌局不会因此结束。',wrap=True))
             actions = horizontal()
             actions.addWidget(button('继续对局',modal.dismiss))
             actions.addStretch()

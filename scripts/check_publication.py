@@ -62,6 +62,11 @@ def main():
     for key in ('akagi_ot_apikey','akagi_v3_apikey','mjapi_secret','mjapi_user'):
         if example.get(key):
             errors.append(f'示例配置不应包含 {key} 的真实值')
+    for key in ('riichicity_client_path','riichicity_unlock_path','riichicity_unlock_ca','riichicity_injector_path','riichicity_upstream_proxy'):
+        if example.get(key):
+            errors.append(f'公开模板不应包含本机一番街配置：{key}')
+    if example.get('riichicity_unlock_enabled') or example.get('riichicity_capture_method','manual')!='manual':
+        errors.append('公开模板不应默认启动外部解锁或进程注入工具')
     if example.get('enable_automation') or example.get('auto_join_game'):
         errors.append('公开模板应默认关闭自动操作')
     manifest = json.loads((ROOT/'mjmax/config/data_version.json').read_text(encoding='utf-8'))

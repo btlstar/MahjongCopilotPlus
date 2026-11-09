@@ -116,8 +116,29 @@ class WardrobePage(QScrollArea):
         self.details.body.addWidget(more,0,Qt.AlignLeft)
         body.addWidget(self.details)
         body.addStretch()
-        self.setWidget(page)
+        self.majsoul_page=page
+        wrapper=QWidget()
+        content=column(wrapper,0,0)
+        self.native_page=QWidget()
+        native_body=column(self.native_page,18,12)
+        native_card=Card('RiichiCityUnlock','本地外部工具')
+        self.native_status=label('',wrap=True)
+        native_card.body.addWidget(self.native_status)
+        native_card.body.addWidget(label('在平台设置选择解锁程序并启用。角色、皮肤、装扮仍在游戏中选择；工具原有配置和授权模式不变。',wrap=True))
+        native_card.body.addWidget(button('客户端与解锁配置',lambda:self.owner.show_settings(4)))
+        native_body.addWidget(native_card)
+        native_body.addStretch()
+        content.addWidget(self.native_page)
+        content.addWidget(self.majsoul_page)
+        self.setWidget(wrapper)
         self.select('竹影墨韵')
+        self.sync_platform()
+
+    def sync_platform(self):
+        native=self.owner.st.platform=='riichicity'
+        self.native_page.setVisible(native)
+        self.majsoul_page.setVisible(not native)
+        self.native_status.setText('已启用；对局捕获与 AI 由 Copilot 处理。' if self.owner.st.riichicity_unlock_enabled else '尚未启用；可独立使用 Copilot 的一番街 AI 分析。')
 
     def select(self,name):
         self.details.header.itemAt(0).widget().setText(name)

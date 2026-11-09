@@ -40,7 +40,33 @@ def check_gui():
         snapshots.mkdir(parents=True,exist_ok=True)
         window.grab().save(str(snapshots/'game.png'))
         assert window.hand_card.isVisible()
+        assert [item.text() for item in window.settings_page.tab_buttons]==['显示','AI 连接','连接','自动操作','平台']
+        window.show_settings(2)
+        pump(app)
+        assert not window.settings_page.automation_actions.isVisible()
+        assert not window.settings_page.fields['enable_automation'].isVisible()
+        window.show_settings(3)
+        pump(app)
+        page = window.settings_page
+        assert page.fields['delay_random_lower'].isVisible()
+        assert page.fields['auto_idle_move'].isVisible()
+        assert page.automation_actions.isVisible()
+        assert not any('展开自动操作细节' in item.text() for item in page.findChildren(QPushButton))
+        page.fields['delay_random_lower'].setValue(5)
+        page.fields['delay_random_upper'].setValue(2)
+        page.save_automation_button.click()
+        assert '上限不能小于下限' in page.auto_result.text()
+        page.fields['delay_random_upper'].setValue(6)
+        page.pages.widget(3).verticalScrollBar().setValue(page.pages.widget(3).verticalScrollBar().maximum())
+        pump(app)
+        assert page.save_automation_button.isVisible()
+        assert page.save_automation_button.geometry().bottom()<=page.automation_actions.height()
+        page.save_automation_button.click()
+        assert st.delay_random_lower==5 and st.delay_random_upper==6
+        assert not st.enable_automation and not st.auto_join_game
+        assert '已保存' in page.auto_result.text()
         window.show_settings(1)
+        assert not page.automation_actions.isVisible()
         fields = window.settings_page.fields
         provider = fields['model_type']
         provider.setCurrentIndex(provider.findData('Local'))
@@ -201,6 +227,39 @@ def check_gui():
         assert expected['4p'] in details
         window._modal.dismiss()
         ready.last_error = None
+        # Verified models in the footer come from completed inference, not
+        # authorization/catalog success. Recent checks remain in diagnostics.
+        window.resize(1100,650)
+        pump(app)
+        ready.mode=SimpleNamespace(value='4P')
+        check={'sequence':1,'time':'2026-11-05T12:00:00+08:00','phase':'decision',
+               'requested':expected['4p'],'served':expected['4p'],
+               'status':'confirmed','elapsed_ms':230}
+        ready.last_model_check=check
+        ready.model_checks=(check,)
+        ready.model_confirmed=True
+        ready.last_served_model=expected['4p']
+        ready.verified_total,ready.failed_total=1,0
+        window._refresh_game()
+        assert '已核验' in window.model_status.text()
+        assert '通过 1 次' in window.model_status.toolTip()
+        window.show_diagnostics()
+        from PySide6.QtWidgets import QPlainTextEdit
+        audits='\n'.join(item.toPlainText() for item in window._modal.findChildren(QPlainTextEdit))
+        assert expected['4p']+' → '+expected['4p'] in audits
+        window._modal.dismiss()
+        ready.last_model_check=dict(check,status='missing_model',served=None)
+        ready.model_confirmed=False
+        ready.failed_total=1
+        ready.last_error='offline missing model report'
+        window._refresh_game()
+        assert '未回报模型' in window.model_status.text()
+        assert '建议异常' in window.ai_status.text()
+        ready.last_model_check=None
+        ready.model_checks=()
+        ready.last_error=None
+        ready.last_served_model=None
+        ready.verified_total,ready.failed_total=0,0
         legacy = SimpleNamespace(name='offline-legacy',protocol='legacy',model_confirmed=True,
                                  last_served_model='4p-server-reported')
         manager.bot = legacy
@@ -289,7 +348,7 @@ def check_gui():
                 assert expected['4p'] in window.model_status.toolTip()
                 assert expected['3p'] in window.model_status.toolTip()
                 if index==2:
-                    for tab in range(4):
+                    for tab in range(window.settings_page.pages.count()):
                         window.show_settings(tab)
                         pump(app,.03)
                         assert window.settings_page.pages.currentWidget().horizontalScrollBar().maximum()==0
@@ -314,7 +373,9 @@ def check_gui():
         'actual backend status','two-key presets','invalid hotkey rejected','internal modal',
         'cancel does not save','port validation','proxy reload scheduled','explicit upstream toggle',
         'disabled upstream cleared on save','direct route diagnostics','Esc closes modal',
-        'single game-overlay toggle','immediate synchronized settings','empty hand hidden','narrow layout','X shutdown']}
+        'single game-overlay toggle','immediate synchronized settings','empty hand hidden',
+        'separate connection and automation tabs','always-visible automation details',
+        'persistent automation save feedback and range validation','narrow layout','X shutdown']}
 
 
 if __name__=='__main__':

@@ -34,4 +34,43 @@ def runtime_models_text(manager):
     text = '当前已加载：'+loaded_models_text(bot)
     if manager.bot_need_update:
         text += '（新配置待切换）'
-    return '\n'.join(part for part in (text,inference_report_text(bot)) if part)
+    report = inference_report_text(bot)
+    check = getattr(bot,'last_model_check',None)
+    if check and check['status']!='confirmed':
+        report = '最近一次推理：'+CHECK_STATUS.get(check['status'],'未核验')+'；未采用建议。'
+    if hasattr(bot,'verified_total'):
+        report += f"\n逐次核验：通过 {bot.verified_total} 次，未采用 {bot.failed_total} 次（本次加载）。"
+    return '\n'.join(part for part in (text,report) if part)
+
+
+CHECK_STATUS = {'confirmed':'一致','mismatch':'模型不符','missing_model':'未回报模型',
+                'invalid_model':'模型 ID 无效','request_failed':'请求失败','invalid_reaction':'动作无效'}
+
+
+def inference_footer_text(bot):
+    """Use the completed response, not the saved draft, for verification."""
+    if getattr(bot,'protocol',None)!='v3':
+        return ''
+    check = getattr(bot,'last_model_check',None)
+    if not check:
+        return ''
+    game = getattr(getattr(bot,'mode',None),'value','').lower()
+    model = getattr(bot,'models',{}).get(game)
+    if not model or check.get('requested')!=model:
+        return ''
+    title = '四麻' if game=='4p' else '三麻'
+    status = ('已核验' if check['status']=='confirmed' else CHECK_STATUS.get(check['status'],'未核验'))
+    return f'{title} {model} · {status}'
+
+
+def model_check_history_text(bot):
+    checks = getattr(bot,'model_checks',())
+    if not checks:
+        return ''
+    lines = ['最近 '+str(len(checks))+' 次推理核验（本次加载）：']
+    for check in checks:
+        phase = '立直后出牌' if check['phase']=='reach_discard' else '决策'
+        lines.append(f"#{check['sequence']} {check['time']} · {phase} · "
+                     f"{check['requested'] or '—'} → {check['served'] or '未回报'} · "
+                     f"{CHECK_STATUS.get(check['status'],'失败')} · {check['elapsed_ms']} ms")
+    return '\n'.join(lines)
