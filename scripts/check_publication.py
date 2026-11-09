@@ -30,6 +30,8 @@ def main():
         name = relative.as_posix()
         if PRIVATE_DIRS.intersection(relative.parts) or path.suffix.lower() in BINARY_EXTENSIONS:
             errors.append(f'非源码／私人文件进入发布候选：{name}')
+        if path.name in ('AGENTS.md','COMMIT_MESSAGE.txt','COMMIT_MESSAGE.md','VALIDATION.md'):
+            errors.append(f'内部工作材料进入发布候选：{name}')
         if path.name in ('settings.json','settings.yaml','settings.mod.yaml'):
             errors.append(f'私人配置进入发布候选：{name}')
         if path.stat().st_size>=95*1024*1024:

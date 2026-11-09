@@ -98,7 +98,7 @@ def main():
     shutil.move(str(package),str(destination))
     print(json.dumps({'portable':str(destination),'exe':APP_NAME+'.exe',
                       'include_3p':args.include_3p,'include_proxinject':args.include_proxinject,
-                      'note':'发布前仍需执行 docs/PUBLISHING.md 中的二进制与许可验收'},ensure_ascii=False,indent=2))
+                      'note':'历史打包工具；当前项目通过源码和 start.bat 使用'},ensure_ascii=False,indent=2))
 
 
 if __name__=='__main__':

@@ -64,3 +64,12 @@ Desktop.ini
 
 # Machine-specific workspace/environment notes
 /WORKSPACE.local.md
+
+# Private working records
+/AGENTS.md
+/docs/COMMIT_MESSAGE*
+/docs/PUBLISHING.md
+/docs/WORKSPACE.md
+/docs/RELEASE_NOTES.md
+/notes/
+/research/

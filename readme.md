@@ -21,7 +21,7 @@ MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot
 
 **维护状态：暂缓新增开发。** 2026-11-09 的整理提交保存了此前尚未上传的模型核验、提示框分组、一番街实验性接入与界面改动。当前 `main` 含未单独发布的更新，详见[更新记录中的“未发布”](CHANGELOG.md)。
 
-`v0.1.0-preview.3`：完善 AI 连接与模型状态，修复刷新后的游戏内提示恢复及网络异常时程序误关浏览器的问题。详见[本次发布说明](docs/RELEASE_NOTES.md)与[更新记录](CHANGELOG.md)。
+`v0.1.0-preview.3`：完善 AI 连接与模型状态，修复刷新后的游戏内提示恢复及网络异常时程序误关浏览器的问题。详见[发布页面](https://github.com/btlstar/MahjongCopilotPlus/releases/tag/v0.1.0-preview.3)与[更新记录](CHANGELOG.md)。
 
 ## 特性
 
@@ -87,7 +87,7 @@ AI 连接设置：密钥显隐、按玩法选择型号、获取列表与测试�
 
 推荐通过 GitHub Desktop Clone 本仓库，后续在同一目录 Pull 更新。也可下载 Release 的 `Source code (zip)` 后安装依赖；该文件仅包含源码。
 
-更新及旧版配置迁移见[升级说明](docs/UPGRADING.md)；参与开发请参阅[工作目录约定](docs/WORKSPACE.md)。
+更新及旧版配置迁移见[升级说明](docs/UPGRADING.md)。
 
 ### 源码安装与启动
 
@@ -153,7 +153,6 @@ py -3.11 -m venv venv
 ## 文档与开发
 
 - [安装与排错](docs/INSTALL.md)
-- [开发目录与启动入口](docs/WORKSPACE.md)
 - [升级与配置迁移](docs/UPGRADING.md)
 - [资源下载与 TUN／直连排查](docs/NETWORK.md)
 - [一番街实验性接入](docs/RIICHICITY.md)
@@ -161,40 +160,4 @@ py -3.11 -m venv venv
 - [MajsoulMax 集成与数据更新](mjmax/INTEGRATION.md)
 - [贡献指南](CONTRIBUTING.md)
 - [更新记录](CHANGELOG.md)
-- [当前版本发布说明](docs/RELEASE_NOTES.md)
-- [源码发布流程](docs/PUBLISHING.md)
 - [第三方来源与许可](THIRD_PARTY_NOTICES.md)
-
-离线检查：
-
-```powershell
-.\venv\Scripts\python.exe -m unittest discover -s tests -v
-.\venv\Scripts\python.exe tests/desktop_smoke.py
-.\venv\Scripts\python.exe tests/native_desktop_smoke.py
-.\venv\Scripts\python.exe tests/riichicity_desktop_smoke.py
-.\venv\Scripts\python.exe scripts/check_publication.py
-```
-
-重新生成 README 截图：`python scripts/capture_readme.py`。该工具使用临时配置和虚构型号渲染真实 Qt／HTML 组件，不启动真实游戏、代理或 AI 后端，不注册老板键，也不读取个人设置。
-
-桌面检查会打开临时的离线测试窗口，不登录真实游戏。源码预览通过离线检查不代表所有游戏版本、服务接口或自动点击场景均经过实战验证。
-
-## 鸣谢
-
-- [latorc/MahjongCopilot](https://github.com/latorc/MahjongCopilot)：上游程序、AI 接口、捕获与自动操作基础。
-- [jiboyingg/MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max)：Copilot 与 MajsoulMax 的整合参考。
-- [Avenshy/MajsoulMax](https://github.com/Avenshy/MajsoulMax)、[MajsoulData](https://github.com/Avenshy/MajsoulData)：装扮模块、协议和资源快照。
-- [Avenshy/RiichiCityUnlock](https://github.com/Avenshy/RiichiCityUnlock)：用户单独准备的外部工具，保留其原有模式与配置。
-- [Equim-chan/Mortal](https://github.com/Equim-chan/Mortal)、[shinkuan/Akagi](https://github.com/shinkuan/Akagi)：模型结构、引擎与相关工作。
-- [MahjongRepository/mahjong_soul_api](https://github.com/MahjongRepository/mahjong_soul_api)、[747929791/majsoul_wrapper](https://github.com/747929791/majsoul_wrapper)、[MJAI](https://mjai.app/)：协议和实现参考。
-- [PragmaTwice/proxinject](https://github.com/PragmaTwice/proxinject)、Qt for Python、Playwright、mitmproxy 及其他依赖的贡献者。
-
-## 许可证
-
-项目沿用上游的 **GNU GPL v3**，原文见 [LICENSE](LICENSE)，原作者版权声明予以保留。Mortal 派生部分及外部原生库、Qt、代理组件等另有适用条款，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；主许可证不会替它们重新授权。
-
-本项目不附加“禁止商用”或“下载后 24 小时内删除”等限制。复制、修改、再分发时应遵守实际适用的许可证，并保留相应源码、署名和许可说明。
-
----
-
-**English:** MahjongCopilotPlus is a community-maintained MahjongCopilot derivative with a redesigned dark Qt desktop, consistent tile rendering, draggable advice overlays, configurable global hotkeys, and optional MajsoulMax integration. Mahjong Soul is supported; experimental native Riichi City capture and AI advice are available, with optional externally supplied RiichiCityUnlock. Live Riichi City gameplay remains unverified; other platforms are planned. Model weights, credentials and optional three-player/client-injection dependencies are not bundled. Distributed as source only; install Python, dependencies and Chromium, then launch with start.bat. See the license and third-party notices before redistribution.

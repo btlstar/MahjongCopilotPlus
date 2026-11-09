@@ -1,6 +1,6 @@
 # 桌面使用说明
 
-安装步骤见[安装与排错](docs/INSTALL.md)。安装 Python 与依赖后，从唯一工作目录双击 `start.bat` 启动；后续不再构建或发布 exe。目录约定见[开发目录说明](docs/WORKSPACE.md)。本地／旧版 OT 三麻需要额外原生库，Akagi v3 三麻不需要该扩展。
+安装步骤见[安装与排错](docs/INSTALL.md)。安装 Python 与依赖后，从唯一工作目录双击 `start.bat` 启动；后续不再构建或发布 exe。本地／旧版 OT 三麻需要额外原生库，Akagi v3 三麻不需要该扩展。
 
 ## 对局页
 
