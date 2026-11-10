@@ -2,6 +2,8 @@
 
 当前接入 Windows 独立客户端：读取对局协议并转换为现有 AI 的 MJAI 事件，在 Copilot 主界面显示手牌与建议。三麻、四麻共用现有 AI 配置，Akagi v3 每次响应仍严格核验模型 ID，不切换备用模型。首次接入尚未经过真实账号对局验收。
 
+本页的 RiichiCityUnlock 是可选外部代理工具；[RiichiCityStyle](https://github.com/btlstar/RiichiCityStyle) 是独立本地装扮插件，两者名称、程序和配置不同。仅使用 RiichiCityStyle 换装时，无需开启本页的外部代理开关。
+
 ## 启动与设置
 
 1. 正常使用一番街 launcher 更新游戏，然后关闭 launcher 启动的游戏。Copilot 的入口应指向 **Game 目录内的 Mahjong-JP.exe**，不是 launcher。常规安装位置会自动识别；界面仍需保存配置。
@@ -45,10 +47,4 @@ Copilot 默认本地端口为 10999，不能与解锁工具 41110 相同。未�
 - 诊断显示已识别协议帧数和最近命令名，便于区分“未捕获”“有协议但座位不完整”和“AI 请求失败”。不要公开完整私人日志、设置、登录资料和证书。
 - 外部工具配置由它自己管理。当前对提供的历史发行包只做进程和 HTTP 代理组合，未解包、反编译或重新分发，也不保证适配未来所有游戏版本。
 
-## 已完成的验证
-
-离线覆盖协议帧、三／四麻座位、起手首打、赤牌、副露与杠、拔北、立直与结算、重复通知与状态异常恢复。三／四麻协议事件通过真实本地 HTTP 服务发送到现有 v3 适配器，并验证请求型号与响应核验。
-
-真实 proxinject 已用于本程序创建的临时 Python 测试进程，通过 SOCKS→HTTP CONNECT 回环完成收发；真实 RiichiCityUnlock 与 Copilot 串联后，双向 WebSocket 字节与捕获均通过本地测试。它们证明本地传输和进程边界可工作，**不等同于真实游戏登录、完整对局、装扮效果或线上 AI 服务已验证**。
-
-协议参考和许可见[来源记录](../game/riichicity/PROVENANCE.md)。本版本仍使用源码与 BAT，不提供 exe 包。
+协议来源与许可见[来源记录](../game/riichicity/PROVENANCE.md)。本项目仅提供源码，通过 `start.bat` 启动。

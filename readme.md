@@ -9,17 +9,17 @@
 
 MahjongCopilotPlus 在 [MahjongCopilot](https://github.com/latorc/MahjongCopilot) 的基础上扩展，参考 [MahjongCopilot-max](https://github.com/jiboyingg/MahjongCopilot-max) 的整合思路，接入 [MajsoulMax](https://github.com/Avenshy/MajsoulMax)，并重构桌面界面、设置和提示体验。
 
-当前支持 **雀魂三麻／四麻**，新增 **一番街 Windows 原生客户端实验性接入**（主界面 AI 建议、可选外部 RiichiCityUnlock，真实对局待验证）。Akagi v3 三麻无需本地三麻扩展；本地模型与旧版 OT 的原生库要求见下文。天凤、天月麻将、掌心麻将仍在规划中，尚未实现。本项目与各游戏平台及上游项目没有官方隶属关系。
+当前支持 **雀魂三麻／四麻**，新增 **一番街 Windows 原生客户端实验性接入**（主界面 AI 建议、可选外部 RiichiCityUnlock，真实对局待验证）。Akagi v3 三麻无需本地三麻扩展；本地模型与旧版 OT 的原生库要求见下文。本项目未接入天凤、天月麻雀或掌心全民麻将。本项目与各游戏平台及上游项目没有官方隶属关系。
 
 > **源码部署，通过 `start.bat` 启动。** 请先安装 Python 3.11 x64、依赖与 Chromium；不提供 exe／免安装运行包。更新与问题反馈请使用[本仓库](https://github.com/btlstar/MahjongCopilotPlus)。
 
 ![对局页：AI 建议、当前手牌及底部已加载型号](assets/screenshots/game.png)
 
-截图基于当前源码的实际界面（含未发布的设置分类与提示框分组调整），以离线演示数据生成；`4p-demo-model`／`3p-demo-model` 为虚构示例，不是可用型号、默认型号或最新型号推荐。
+截图使用演示数据；`4p-demo-model`／`3p-demo-model` 为虚构示例，不是可用型号、默认型号或最新型号推荐。
 
 ## 当前版本
 
-**维护状态：暂缓新增开发。** 2026-11-09 的整理提交保存了此前尚未上传的模型核验、提示框分组、一番街实验性接入与界面改动。当前 `main` 含未单独发布的更新，详见[更新记录中的“未发布”](CHANGELOG.md)。
+**维护状态：暂缓新增开发。** 多平台 AI 与本地装扮的后续维护转至 [AkagiPlus](https://github.com/btlstar/AkagiPlus)。本项目仅提供源码，当前主分支与已发布版本的差异见[更新记录](CHANGELOG.md)。
 
 `v0.1.0-preview.3`：完善 AI 连接与模型状态，修复刷新后的游戏内提示恢复及网络异常时程序误关浏览器的问题。详见[发布页面](https://github.com/btlstar/MahjongCopilotPlus/releases/tag/v0.1.0-preview.3)与[更新记录](CHANGELOG.md)。
 
